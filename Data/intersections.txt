@@ -1,0 +1,15 @@
+1|Nguyen Hue|10.5|20.5
+2|Cho Han|15.0|25.0
+3|Truong Dai Hoc Bach Khoa|30.0|40.0
+4|Cau Rong|50.0|60.0
+5|Benh Vien Da Nang|65.0|35.0
+6|Cong Vien 29 Thang 3|80.0|45.0
+7|San Van Dong Chi Lang|90.0|70.0
+8|Ben Xe Trung Tam Da Nang|40.0|85.0
+9|Ga Da Nang|55.0|90.0
+10|San Bay Da Nang|75.0|100.0
+11|Bao Tang Cham|25.0|75.0
+12|Nha Hat Trung Vuong|35.0|15.0
+13|Cau Tran Thi Ly|60.0|20.0
+14|Cho Con|45.0|50.0
+15|Bien My Khe|20.0|100.0
