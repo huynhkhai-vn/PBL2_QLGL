@@ -1,90 +1,119 @@
 #ifndef MIN_HEAP_H
 #define MIN_HEAP_H
 
-#include "hnode.h"
-#include <iostream>
-using namespace std;
+#include <functional>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
-class minheap{
-    private:
-        hnode* heap;
-        int size;
-        int n;
+template <typename T, typename Compare = std::less<T>>
+class minheap {
+private:
+    std::vector<T> heap;
+    Compare compare;
 
-        void heapify_up(int i) {
-            while (i > 0) {
-                int parent = (i - 1) / 2;
-                if (heap[parent].get_cost() <= heap[i].get_cost()) break;
-                swap(heap[parent], heap[i]);
-                i = parent;
-            }
-        }
+    void heapify_up(std::size_t index);
+    void heapify_down(std::size_t index);
 
-        void heapify_down(int i) {
-            while (true) {
-                int left = 2 * i + 1;
-                int right = 2 * i + 2;
-                int smallest = i;
-                if (left < n && heap[left].get_cost() < heap[smallest].get_cost()) {
-                    smallest = left;
-                }
-                if (right < n && heap[right].get_cost() < heap[smallest].get_cost()) {
-                    smallest = right;
-                }
-                if (smallest == i) break;
+public:
+    explicit minheap(int initial_capacity = 100, const Compare& comparator = Compare());
 
-                swap(heap[i], heap[smallest]);
-                i = smallest;
-            }
-        }
-
-        void swap(hnode &a, hnode &b) {
-            hnode tmp = a;
-            a = b;
-            b = tmp;
-        }
-
-    public:
-        minheap(int size = 100)
-            : heap(new hnode[size > 0 ? size : 1]),
-              size(size > 0 ? size : 1),
-              n(0) {}
-        ~minheap() { delete[] heap; }
-        minheap(const minheap&) = delete;
-        minheap& operator=(const minheap&) = delete;
-
-        void push(hnode node) {
-            if (n == size) {
-                int new_size = size * 2;
-                hnode* new_heap = new hnode[new_size];
-                for (int i = 0; i < n; i++) {
-                    new_heap[i] = heap[i];
-                }
-                delete[] heap;
-                heap = new_heap;
-                size = new_size;
-            }
-            heap[n] = node;
-            n++;
-            heapify_up(n - 1);
-        }
-
-        hnode pop() {
-            if (n == 0) return hnode(-1, -1);
-
-            hnode result = heap[0];
-            swap(heap[0], heap[n - 1]);
-            n--;
-            heapify_down(0);
-            return result;
-        }
-
-        hnode top() const {
-            if (n == 0) return hnode(-1, -1);
-            return heap[0];
-        }
-
-        int isEmpty() const { return n == 0 ? 1 : 0; }
+    void push(const T& value);
+    void push(T&& value);
+    T pop();
+    T top() const;
+    bool isEmpty() const;
+    std::size_t getSize() const;
 };
+
+template <typename T, typename Compare>
+void minheap<T, Compare>::heapify_up(std::size_t index) {
+    while (index > 0) {
+        std::size_t parent = (index - 1) / 2;
+        if (!compare(heap[index], heap[parent])) {
+            break;
+        }
+        std::swap(heap[parent], heap[index]);
+        index = parent;
+    }
+}
+
+template <typename T, typename Compare>
+void minheap<T, Compare>::heapify_down(std::size_t index) {
+    while (true) {
+        std::size_t left = 2 * index + 1;
+        std::size_t right = 2 * index + 2;
+        std::size_t smallest = index;
+
+        if (left < heap.size() && compare(heap[left], heap[smallest])) {
+            smallest = left;
+        }
+        if (right < heap.size() && compare(heap[right], heap[smallest])) {
+            smallest = right;
+        }
+        if (smallest == index) {
+            break;
+        }
+
+        std::swap(heap[index], heap[smallest]);
+        index = smallest;
+    }
+}
+
+template <typename T, typename Compare>
+minheap<T, Compare>::minheap(int initial_capacity, const Compare& comparator)
+    : compare(comparator) {
+    if (initial_capacity > 0) {
+        heap.reserve(static_cast<std::size_t>(initial_capacity));
+    }
+}
+
+template <typename T, typename Compare>
+void minheap<T, Compare>::push(const T& value) {
+    heap.push_back(value);
+    heapify_up(heap.size() - 1);
+}
+
+template <typename T, typename Compare>
+void minheap<T, Compare>::push(T&& value) {
+    heap.push_back(std::move(value));
+    heapify_up(heap.size() - 1);
+}
+
+template <typename T, typename Compare>
+T minheap<T, Compare>::pop() {
+    if (heap.empty()) {
+        throw std::out_of_range("Cannot pop from an empty minheap");
+    }
+
+    T result = std::move(heap.front());
+    if (heap.size() == 1) {
+        heap.pop_back();
+        return result;
+    }
+
+    heap.front() = std::move(heap.back());
+    heap.pop_back();
+    heapify_down(0);
+    return result;
+}
+
+template <typename T, typename Compare>
+T minheap<T, Compare>::top() const {
+    if (heap.empty()) {
+        throw std::out_of_range("Cannot read the top of an empty minheap");
+    }
+    return heap.front();
+}
+
+template <typename T, typename Compare>
+bool minheap<T, Compare>::isEmpty() const {
+    return heap.empty();
+}
+
+template <typename T, typename Compare>
+std::size_t minheap<T, Compare>::getSize() const {
+    return heap.size();
+}
 
 #endif

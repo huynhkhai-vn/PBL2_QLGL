@@ -8,14 +8,22 @@ using namespace std;
 
 
 #include "DataStructures/map/map.h"
+#include "DataStructures/priorityqueue/hnode.h"
 #include "DataStructures/priorityqueue/minheap.h"
+
+struct hnode_cost_compare {
+    bool operator()(const hnode& left, const hnode& right) const;
+};
+
+inline bool hnode_cost_compare::operator()(const hnode& left, const hnode& right) const {
+    return left.get_cost() < right.get_cost();
+}
 
 class dijkstra {
     private:
         void run(const map &m, int start_id, int end_id,
                 double (road::*weight)() const, 
                 int *path, int &count, int *road_ids);
-
     public:
         void shortestPath(const map &m, int start_id, int end_id,
                           int *path, int &count, int *road_ids = nullptr);
@@ -50,7 +58,7 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
     vector<int> parent_road(n, -1);
 
     dist[start] = 0;
-    minheap pq(2 * m.get_num_r() + 1);
+    minheap<hnode, hnode_cost_compare> pq(2 * m.get_num_r() + 1);
     pq.push(hnode(start_id, 0));
 
     while(!pq.isEmpty()) {
@@ -65,12 +73,13 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
         if(u == end) {
             break;
         }
-        AdjNode* p = m.graph[u].get_head();
+        auto* p = m.graph[u].get_head();
 
         while(p != nullptr) {
 
-            int v = m.find_i(p->get_i());
-            double w = (p->get_r().*weight)();
+            const AdjNode& adjacent = p->get_data();
+            int v = m.find_i(adjacent.get_i());
+            double w = (adjacent.get_r().*weight)();
 
             if(!std::isfinite(w) || w < 0){
                 cout << "Trong so duong di khong hop le!" << endl;
@@ -80,9 +89,9 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
             if(v != -1 && dist[u] + w < dist[v]) {
                 dist[v] = dist[u] + w;
                 parent[v] = u;
-                parent_road[v] = p->get_r().getid_r();
+                parent_road[v] = adjacent.get_r().getid_r();
 
-                pq.push(hnode(p->get_i(), dist[v]));
+                pq.push(hnode(adjacent.get_i(), dist[v]));
             }
 
 
