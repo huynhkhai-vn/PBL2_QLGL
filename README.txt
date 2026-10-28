@@ -18,9 +18,11 @@ PROJECT CO 2 CACH CHAY:
 
 CAU TRUC CHINH
 - Data/: du lieu giao lo va duong.
-- DataStructures/: cac lop OOP va cau truc du lieu ban do.
-- Algorithms/dijkstra/: thuat toan Dijkstra.
-- Simulation/taxi/: lop mo phong taxi goc.
+- include/DataStructures/: cac lop OOP va cau truc du lieu ban do.
+- include/dijkstra.h: thuat toan Dijkstra.
+- include/taxi.h: lop mo phong taxi goc.
+- include/DataStructures/map/: cac lop ban do, giao lo lien ket va adjacency.
+- include/DataStructures/priorityqueue/: hang doi uu tien.
 - gui_main.cpp: chuong trinh giao dien Raylib.
 - main.cpp: chuong trinh console goc.
 

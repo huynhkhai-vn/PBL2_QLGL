@@ -1,8 +1,8 @@
 #include <iostream>
 #include <vector>
 #include "DataStructures/map/map.h"
-#include "Algorithms/dijkstra/dijkstra.h"
-#include "Simulation/taxi/taxi.h"
+#include "dijkstra.h"
+#include "taxi.h"
 
 using namespace std;
 

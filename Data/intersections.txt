@@ -1,15 +1,30 @@
-1|Nguyen Hue|10.5|20.5
-2|Cho Han|15.0|25.0
-3|Truong Dai Hoc Bach Khoa|30.0|40.0
-4|Cau Rong|50.0|60.0
-5|Benh Vien Da Nang|65.0|35.0
-6|Cong Vien 29 Thang 3|80.0|45.0
-7|San Van Dong Chi Lang|90.0|70.0
-8|Ben Xe Trung Tam Da Nang|40.0|85.0
-9|Ga Da Nang|55.0|90.0
-10|San Bay Da Nang|75.0|100.0
-11|Bao Tang Cham|25.0|75.0
-12|Nha Hat Trung Vuong|35.0|15.0
-13|Cau Tran Thi Ly|60.0|20.0
-14|Cho Con|45.0|50.0
-15|Bien My Khe|20.0|100.0
+1|Nguyen Hue|57.0|63.0
+2|Cho Han|65.0|58.0
+3|Truong Dai Hoc Bach Khoa|29.0|69.0
+4|Cau Rong|78.0|54.0
+5|Benh Vien Da Nang|49.0|64.0
+6|Cong Vien 29 Thang 3|39.0|54.0
+7|San Van Dong Chi Lang|65.0|66.0
+8|Ben Xe Trung Tam Da Nang|34.0|42.0
+9|Ga Da Nang|49.0|68.0
+10|San Bay Da Nang|56.0|42.0
+11|Bao Tang Cham|69.0|48.0
+12|Nha Hat Trung Vuong|64.0|62.0
+13|Cau Tran Thi Ly|72.0|33.0
+14|Cho Con|63.0|57.0
+15|Bien My Khe|88.0|51.0
+16||38.0|69.0
+17||49.0|66.0
+18||55.0|64.0
+19||60.0|62.0
+20||63.0|60.0
+21||67.0|53.0
+22||74.0|51.0
+23||83.0|53.0
+24||76.0|44.0
+25||64.0|38.0
+26||45.0|42.0
+27||36.0|48.0
+28||44.0|58.0
+29||32.0|61.0
+30||65.0|64.0

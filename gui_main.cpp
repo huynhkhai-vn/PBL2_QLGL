@@ -1,6 +1,6 @@
 #include "raylib.h"
 #include "DataStructures/map/map.h"
-#include "Algorithms/dijkstra/dijkstra.h"
+#include "dijkstra.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,10 +13,13 @@
 namespace {
 constexpr int SCREEN_W = 1280;
 constexpr int SCREEN_H = 800;
+const Rectangle MAP_VIEWPORT = { 32, 130, 760, 610 };
+const Vector2 MAP_CENTER = { 370, 410 };
 const Color PBL_BG = { 15, 23, 42, 255 };
 const Color PBL_PANEL = { 25, 36, 58, 255 };
 const Color PBL_ROAD = { 75, 91, 116, 255 };
 const Color PBL_BLUE = { 59, 130, 246, 255 };
+const Color PBL_PICKUP = { 244, 114, 182, 255 };
 const Color PBL_GREEN = { 34, 197, 94, 255 };
 const Color PBL_RED = { 239, 68, 68, 255 };
 const Color PBL_YELLOW = { 250, 204, 21, 255 };
@@ -24,10 +27,11 @@ const Color PBL_MUTED = { 164, 178, 199, 255 };
 
 struct ScreenPoint { float x; float y; };
 
-bool button(Rectangle r, const char* label, bool active = true) {
+bool button(Rectangle r, const char* label, bool active = true, bool selected = false) {
     Vector2 mouse = GetMousePosition();
     bool hover = CheckCollisionPointRec(mouse, r);
-    Color fill = active ? (hover ? Color{ 71, 85, 105, 255 } : Color{ 51, 65, 85, 255 })
+    Color fill = active ? (selected ? Color{ 37, 99, 160, 255 }
+                                    : (hover ? Color{ 71, 85, 105, 255 } : Color{ 51, 65, 85, 255 }))
                         : Color{ 45, 55, 72, 255 };
     DrawRectangleRounded(r, 0.18f, 8, fill);
     DrawRectangleRoundedLines(r, 0.18f, 8, active ? PBL_BLUE : Color{ 65, 75, 90, 255 });
@@ -60,42 +64,84 @@ int main() {
 
     const int n = city.get_num_i();
     if (n < 2) return 1;
-    std::vector<int> path(n), roadIds(n);
-    int pathCount = 0;
-    int startIndex = 0;
-    int endIndex = n - 1;
+    std::vector<int> firstPath(n), firstRoadIds(n), secondPath(n), secondRoadIds(n);
+    std::vector<int> routePath, routeRoadIds;
+    int firstPathCount = 0;
+    int secondPathCount = 0;
+    int taxiIndex = 0;
+    int pickupIndex = std::min(7, n - 1);
+    int destinationIndex = std::min(14, n - 1);
+    int selectionTarget = 0;
     bool fastest = false;
     bool hasRoute = false;
     bool taxiRunning = false;
+    float mapZoom = 1.0f;
+    Vector2 mapPan{ 0.0f, 0.0f };
     double taxiStarted = 0.0;
     double routeDistance = 0.0;
     double routeTime = 0.0;
-    std::string status = "Chon diem di/den, sau do bam Tim duong.";
+    double firstDistance = 0.0;
+    double firstTime = 0.0;
+    double secondDistance = 0.0;
+    double secondTime = 0.0;
+    std::string status = "Chon taxi, diem don va dich tren ban do.";
 
     auto calculateRoute = [&]() {
-        pathCount = 0;
-        std::fill(path.begin(), path.end(), 0);
-        std::fill(roadIds.begin(), roadIds.end(), 0);
+        firstPathCount = 0;
+        secondPathCount = 0;
+        routePath.clear();
+        routeRoadIds.clear();
         dijkstra algorithm;
-        int startId = city.getIntersectionAt(startIndex).getid_i();
-        int endId = city.getIntersectionAt(endIndex).getid_i();
-        if (fastest) algorithm.fastestPath(city, startId, endId, path.data(), pathCount, roadIds.data());
-        else algorithm.shortestPath(city, startId, endId, path.data(), pathCount, roadIds.data());
-        hasRoute = pathCount > 0;
+        int taxiId = city.getIntersectionAt(taxiIndex).getid_i();
+        int pickupId = city.getIntersectionAt(pickupIndex).getid_i();
+        int destinationId = city.getIntersectionAt(destinationIndex).getid_i();
+        if (fastest) {
+            algorithm.fastestPath(city, taxiId, pickupId, firstPath.data(), firstPathCount, firstRoadIds.data());
+        } else {
+            algorithm.shortestPath(city, taxiId, pickupId, firstPath.data(), firstPathCount, firstRoadIds.data());
+        }
+        if (firstPathCount == 0) {
+            hasRoute = false;
+            taxiRunning = false;
+            status = "Khong co duong tu taxi den diem don.";
+            return;
+        }
+        if (fastest) {
+            algorithm.fastestPath(city, pickupId, destinationId, secondPath.data(), secondPathCount, secondRoadIds.data());
+        } else {
+            algorithm.shortestPath(city, pickupId, destinationId, secondPath.data(), secondPathCount, secondRoadIds.data());
+        }
+        hasRoute = secondPathCount > 0;
         taxiRunning = false;
         routeDistance = 0.0;
         routeTime = 0.0;
-        if (hasRoute) {
-            for (int i = 0; i + 1 < pathCount; ++i) {
-                if (i < city.get_num_r()) {
-                    routeDistance += std::max(0.0, city.getRoadDistanceById(roadIds[i], path[i], path[i + 1]));
-                    routeTime += std::max(0.0, city.getRoadTimeById(roadIds[i], path[i], path[i + 1]));
-                }
-            }
-            status = fastest ? "Da tim tuyen nhanh nhat." : "Da tim tuyen ngan nhat.";
-        } else {
-            status = "Khong tim thay duong di.";
+        firstDistance = 0.0;
+        firstTime = 0.0;
+        secondDistance = 0.0;
+        secondTime = 0.0;
+        if (!hasRoute) {
+            status = "Khong co duong tu diem don den dich.";
+            return;
         }
+
+        routePath.insert(routePath.end(), firstPath.begin(), firstPath.begin() + firstPathCount);
+        routeRoadIds.insert(routeRoadIds.end(), firstRoadIds.begin(), firstRoadIds.begin() + firstPathCount - 1);
+        routePath.insert(routePath.end(), secondPath.begin() + 1, secondPath.begin() + secondPathCount);
+        routeRoadIds.insert(routeRoadIds.end(), secondRoadIds.begin(), secondRoadIds.begin() + secondPathCount - 1);
+        for (int i = 0; i < static_cast<int>(routeRoadIds.size()); ++i) {
+            double distance = std::max(0.0, city.getRoadDistanceById(routeRoadIds[i], routePath[i], routePath[i + 1]));
+            double time = std::max(0.0, city.getRoadTimeById(routeRoadIds[i], routePath[i], routePath[i + 1]));
+            routeDistance += distance;
+            routeTime += time;
+            if (i < firstPathCount - 1) {
+                firstDistance += distance;
+                firstTime += time;
+            } else {
+                secondDistance += distance;
+                secondTime += time;
+            }
+        }
+        status = fastest ? "Da tim hai chang nhanh nhat." : "Da tim hai chang ngan nhat.";
     };
 
     auto pointFor = [&](int id) -> ScreenPoint {
@@ -108,130 +154,201 @@ int main() {
             }
         }
         if (!item) return { 0, 0 };
-        return { 45.0f + (float)((item->getx() - minX) / (maxX - minX) * 650.0),
-                 690.0f - (float)((item->gety() - minY) / (maxY - minY) * 560.0) };
+        float baseX = 45.0f + (float)((item->getx() - minX) / (maxX - minX) * 650.0);
+        float baseY = 690.0f - (float)((item->gety() - minY) / (maxY - minY) * 560.0);
+        return { MAP_CENTER.x + (baseX - MAP_CENTER.x) * mapZoom + mapPan.x,
+                 MAP_CENTER.y + (baseY - MAP_CENTER.y) * mapZoom + mapPan.y };
+    };
+
+    auto zoomAt = [&](float newZoom, Vector2 anchor) {
+        newZoom = std::clamp(newZoom, 0.75f, 4.0f);
+        float ratio = newZoom / mapZoom;
+        mapPan.x = anchor.x + (MAP_CENTER.x - anchor.x + mapPan.x) * ratio - MAP_CENTER.x;
+        mapPan.y = anchor.y + (MAP_CENTER.y - anchor.y + mapPan.y) * ratio - MAP_CENTER.y;
+        mapZoom = newZoom;
     };
 
     InitWindow(SCREEN_W, SCREEN_H, "PBL2 | Ban do va tim duong Dijkstra");
     SetTargetFPS(60);
     while (!WindowShouldClose()) {
+        Vector2 mouse = GetMousePosition();
+        if (CheckCollisionPointRec(mouse, MAP_VIEWPORT)) {
+            float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f) zoomAt(mapZoom * std::pow(1.2f, wheel), mouse);
+            if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+                Vector2 delta = GetMouseDelta();
+                mapPan.x += delta.x;
+                mapPan.y += delta.y;
+            }
+        }
+
         BeginDrawing();
         ClearBackground(PBL_BG);
         DrawText("PBL2 - MO PHONG BAN DO GIAO THONG", 32, 22, 27, RAYWHITE);
         DrawText("Raylib + OOP C++ + thuat toan Dijkstra", 34, 55, 16, PBL_MUTED);
         DrawRectangleRounded({ 22, 88, 780, 686 }, 0.025f, 8, PBL_PANEL);
         DrawText("BAN DO GIAO LO", 42, 103, 17, PBL_MUTED);
+        if (button({ 690, 97, 32, 30 }, "+")) zoomAt(mapZoom * 1.25f, MAP_CENTER);
+        if (button({ 728, 97, 32, 30 }, "-")) zoomAt(mapZoom / 1.25f, MAP_CENTER);
+        if (button({ 766, 97, 32, 30 }, "100%")) {
+            mapZoom = 1.0f;
+            mapPan = { 0.0f, 0.0f };
+        }
 
+        BeginScissorMode((int)MAP_VIEWPORT.x, (int)MAP_VIEWPORT.y,
+                         (int)MAP_VIEWPORT.width, (int)MAP_VIEWPORT.height);
         // Draw all roads first; selected route roads are highlighted.
         for (int i = 0; i < city.get_num_r(); ++i) {
             const road& r = city.getRoadAt(i);
             ScreenPoint a = pointFor(r.getstart_id());
             ScreenPoint b = pointFor(r.getend_id());
-            bool onRoute = false;
+            bool firstLeg = false;
+            bool secondLeg = false;
             if (hasRoute) {
-                for (int j = 0; j + 1 < pathCount; ++j) {
-                    if (roadIds[j] == r.getid_r()) { onRoute = true; break; }
+                const int firstLegEdges = std::max(0, firstPathCount - 1);
+                for (int j = 0; j < static_cast<int>(routeRoadIds.size()); ++j) {
+                    if (routeRoadIds[j] == r.getid_r()) {
+                        if (j < firstLegEdges) firstLeg = true;
+                        else secondLeg = true;
+                    }
                 }
             }
-            DrawLineEx({ a.x, a.y }, { b.x, b.y }, onRoute ? 5.0f : 2.0f, onRoute ? PBL_YELLOW : PBL_ROAD);
-            char label[32];
-            std::snprintf(label, sizeof(label), "%.1f", r.getdistance());
-            DrawText(label, (int)((a.x + b.x) / 2 + 3), (int)((a.y + b.y) / 2 - 14), 10,
-                     onRoute ? PBL_YELLOW : PBL_MUTED);
+            Color roadColor = firstLeg ? PBL_BLUE : (secondLeg ? PBL_YELLOW : PBL_ROAD);
+            DrawLineEx({ a.x, a.y }, { b.x, b.y }, firstLeg || secondLeg ? 5.0f : 2.0f, roadColor);
+            if (firstLeg || secondLeg) {
+                char label[32];
+                std::snprintf(label, sizeof(label), "%.1f", r.getdistance());
+                DrawText(label, (int)((a.x + b.x) / 2 + 3), (int)((a.y + b.y) / 2 - 14), 10,
+                         firstLeg ? PBL_BLUE : PBL_YELLOW);
+            }
         }
 
         // Taxi moves along the chosen path, interpolating between intersections.
         ScreenPoint taxiPoint{ 0, 0 };
         bool drawTaxi = false;
-        if (taxiRunning && hasRoute && pathCount > 0) {
+        if (taxiRunning && hasRoute && !routePath.empty()) {
             double elapsed = GetTime() - taxiStarted;
-            double duration = std::max(1.0, (double)(pathCount - 1) * 1.1);
+            double duration = std::max(1.0, (double)(routePath.size() - 1) * 1.1);
             double progress = elapsed / duration;
+            double segmentPos = std::min(progress, 0.9999) * std::max(1, static_cast<int>(routePath.size()) - 1);
+            int segment = std::min((int)segmentPos, std::max(0, static_cast<int>(routePath.size()) - 2));
             if (progress >= 1.0) {
                 taxiRunning = false;
-                status = "Taxi da den noi.";
+                status = "Taxi da dua khach den noi.";
+            } else if (segment < std::max(0, firstPathCount - 1)) {
+                status = "Taxi dang den diem don khach.";
+            } else {
+                status = "Taxi dang cho khach.";
             }
-            double segmentPos = std::min(progress, 0.9999) * std::max(1, pathCount - 1);
-            int segment = std::min((int)segmentPos, std::max(0, pathCount - 2));
             float t = (float)(segmentPos - segment);
-            ScreenPoint a = pointFor(path[segment]);
-            ScreenPoint b = pointFor(path[std::min(segment + 1, pathCount - 1)]);
+            ScreenPoint a = pointFor(routePath[segment]);
+            ScreenPoint b = pointFor(routePath[std::min(segment + 1, static_cast<int>(routePath.size()) - 1)]);
             taxiPoint = { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
             drawTaxi = true;
         }
 
+        bool intersectionSelected = false;
         for (int i = 0; i < n; ++i) {
             const intersection& node = city.getIntersectionAt(i);
             ScreenPoint p = pointFor(node.getid_i());
             Color c = PBL_BLUE;
-            if (node.getid_i() == city.getIntersectionAt(startIndex).getid_i()) c = PBL_GREEN;
-            if (node.getid_i() == city.getIntersectionAt(endIndex).getid_i()) c = PBL_RED;
+            if (i == taxiIndex) c = PBL_GREEN;
+            if (i == pickupIndex) c = PBL_PICKUP;
+            if (i == destinationIndex) c = PBL_RED;
             if (hasRoute) {
-                for (int j = 0; j < pathCount; ++j) {
-                    if (path[j] == node.getid_i() && j > 0 && j < pathCount - 1) c = PBL_YELLOW;
+                for (size_t j = 1; j + 1 < routePath.size(); ++j) {
+                    if (routePath[j] == node.getid_i() && i != pickupIndex) c = PBL_YELLOW;
                 }
             }
-            DrawCircle((int)p.x, (int)p.y, 12, c);
-            DrawCircleLines((int)p.x, (int)p.y, 12, RAYWHITE);
-            char idText[12];
-            std::snprintf(idText, sizeof(idText), "%d", node.getid_i());
-            DrawText(idText, (int)p.x - MeasureText(idText, 12) / 2, (int)p.y - 6, 12, RAYWHITE);
-            std::string name = node.getname_i();
-            if (name.size() > 20) name = name.substr(0, 18) + "..";
-            DrawText(name.c_str(), (int)p.x + 14, (int)p.y - 8, 11, RAYWHITE);
+            bool namedIntersection = !node.getname_i().empty();
+            bool selectedIntersection = i == taxiIndex || i == pickupIndex || i == destinationIndex;
+            Vector2 mouse = GetMousePosition();
+            float dx = mouse.x - p.x;
+            float dy = mouse.y - p.y;
+            if (!intersectionSelected && !taxiRunning && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+                CheckCollisionPointRec(mouse, MAP_VIEWPORT) &&
+                dx * dx + dy * dy <= 18.0f * 18.0f) {
+                if (selectionTarget == 0) taxiIndex = i;
+                else if (selectionTarget == 1) pickupIndex = i;
+                else destinationIndex = i;
+                hasRoute = false;
+                status = "Da chon giao lo. Bam tim duong de cap nhat.";
+                intersectionSelected = true;
+            }
+            float nodeRadius = namedIntersection || selectedIntersection ? 12.0f : 5.0f;
+            DrawCircle((int)p.x, (int)p.y, nodeRadius, namedIntersection || selectedIntersection ? c : PBL_MUTED);
+            DrawCircleLines((int)p.x, (int)p.y, nodeRadius, RAYWHITE);
+            if (namedIntersection) {
+                char idText[12];
+                std::snprintf(idText, sizeof(idText), "%d", node.getid_i());
+                DrawText(idText, (int)p.x - MeasureText(idText, 12) / 2, (int)p.y - 6, 12, RAYWHITE);
+                std::string name = node.getname_i();
+                if (name.size() > 20) name = name.substr(0, 18) + "..";
+                DrawText(name.c_str(), (int)p.x + 14, (int)p.y - 8, 11, RAYWHITE);
+            }
         }
         if (drawTaxi) {
             DrawCircle((int)taxiPoint.x, (int)taxiPoint.y, 8, PBL_YELLOW);
             DrawCircleLines((int)taxiPoint.x, (int)taxiPoint.y, 8, BLACK);
         }
+        EndScissorMode();
+        DrawText("Con lan: zoom | Chuot phai: keo ban do", 42, 750, 12, PBL_MUTED);
 
         // Right control panel
         DrawRectangleRounded({ 820, 88, 440, 686 }, 0.025f, 8, PBL_PANEL);
-        if (button({ 850, 145, 42, 34 }, "<")) { startIndex = (startIndex - 1 + n) % n; hasRoute = false; }
-        if (button({ 1220, 145, 42, 34 }, ">")) { startIndex = (startIndex + 1) % n; hasRoute = false; }
-        if (button({ 850, 205, 42, 34 }, "<")) { endIndex = (endIndex - 1 + n) % n; hasRoute = false; }
-        if (button({ 1220, 205, 42, 34 }, ">")) { endIndex = (endIndex + 1) % n; hasRoute = false; }
-        if (button({ 850, 270, 188, 42 }, "Duong ngan nhat", !taxiRunning)) { fastest = false; calculateRoute(); }
-        if (button({ 1048, 270, 214, 42 }, "Duong nhanh nhat", !taxiRunning)) { fastest = true; calculateRoute(); }
-        if (button({ 850, 326, 412, 42 }, "Chay mo phong taxi", hasRoute && !taxiRunning)) {
+        if (button({ 850, 145, 126, 36 }, "Vi tri taxi", true, selectionTarget == 0)) selectionTarget = 0;
+        if (button({ 986, 145, 126, 36 }, "Diem don", true, selectionTarget == 1)) selectionTarget = 1;
+        if (button({ 1122, 145, 126, 36 }, "Diem den", true, selectionTarget == 2)) selectionTarget = 2;
+        if (button({ 850, 276, 198, 42 }, "Duong ngan nhat", !taxiRunning, !fastest)) { fastest = false; calculateRoute(); }
+        if (button({ 1058, 276, 190, 42 }, "Duong nhanh nhat", !taxiRunning, fastest)) { fastest = true; calculateRoute(); }
+        if (button({ 850, 328, 398, 42 }, "Chay mo phong taxi", hasRoute && !taxiRunning)) {
             taxiRunning = true;
             taxiStarted = GetTime();
+            status = firstPathCount > 1 ? "Taxi dang den diem don khach." : "Taxi dang cho khach.";
         }
-        if (button({ 850, 382, 412, 38 }, "Dat lai", !taxiRunning)) {
-            hasRoute = false; pathCount = 0; routeDistance = 0; routeTime = 0;
-            status = "Da dat lai ket qua.";
+        if (button({ 850, 380, 398, 38 }, "Dat lai", !taxiRunning)) {
+            hasRoute = false;
+            firstPathCount = 0;
+            secondPathCount = 0;
+            routePath.clear();
+            routeRoadIds.clear();
+            routeDistance = 0;
+            routeTime = 0;
+            status = "Da xoa ket qua tim duong.";
         }
-        DrawText("DIEU KHIEN", 846, 105, 20, RAYWHITE);
-        DrawText("DIEM XUAT PHAT", 850, 126, 13, PBL_MUTED);
-        const intersection& start = city.getIntersectionAt(startIndex);
-        DrawText(TextFormat("%d - %s", start.getid_i(), start.getname_i().c_str()), 900, 153, 15, PBL_GREEN);
-        DrawText("DIEM DEN", 850, 186, 13, PBL_MUTED);
-        const intersection& finish = city.getIntersectionAt(endIndex);
-        DrawText(TextFormat("%d - %s", finish.getid_i(), finish.getname_i().c_str()), 900, 213, 15, PBL_RED);
-        DrawText("Nhan < hoac > de doi giao lo.", 850, 244, 13, PBL_MUTED);
+        DrawText("DIEU PHOI CHUYEN TAXI", 846, 105, 20, RAYWHITE);
+        DrawText("Bam nut vai tro, sau do chon giao lo tren ban do.", 850, 190, 12, PBL_MUTED);
+        const intersection& taxiPosition = city.getIntersectionAt(taxiIndex);
+        const intersection& pickup = city.getIntersectionAt(pickupIndex);
+        const intersection& destination = city.getIntersectionAt(destinationIndex);
+        DrawText(TextFormat("Taxi: %d - %s", taxiPosition.getid_i(), taxiPosition.getname_i().c_str()), 850, 210, 14, PBL_GREEN);
+        DrawText(TextFormat("Don khach: %d - %s", pickup.getid_i(), pickup.getname_i().c_str()), 850, 232, 14, PBL_PICKUP);
+        DrawText(TextFormat("Diem den: %d - %s", destination.getid_i(), destination.getname_i().c_str()), 850, 254, 14, PBL_RED);
 
-        DrawText("KET QUA", 850, 444, 19, RAYWHITE);
-        DrawText("Trang thai:", 850, 475, 14, PBL_MUTED);
-        DrawText(status.c_str(), 850, 496, 14, hasRoute ? PBL_GREEN : RAYWHITE);
+        DrawText("KET QUA CHUYEN DI", 850, 438, 19, RAYWHITE);
+        DrawText("Trang thai:", 850, 466, 14, PBL_MUTED);
+        DrawText(status.c_str(), 850, 487, 13, hasRoute ? PBL_GREEN : RAYWHITE);
         if (hasRoute) {
-            DrawText(TextFormat("So giao lo tren tuyen: %d", pathCount), 850, 529, 15, RAYWHITE);
-            DrawText(TextFormat("Tong quang duong: %s", number(routeDistance).c_str()), 850, 556, 15, RAYWHITE);
-            DrawText(TextFormat("Tong thoi gian: %s", number(routeTime).c_str()), 850, 583, 15, RAYWHITE);
-            DrawText("Lo trinh:", 850, 616, 14, PBL_MUTED);
+            DrawText(TextFormat("Taxi -> don: %s km | %s phut", number(firstDistance).c_str(), number(firstTime).c_str()), 850, 520, 14, RAYWHITE);
+            DrawText(TextFormat("Don -> dich: %s km | %s phut", number(secondDistance).c_str(), number(secondTime).c_str()), 850, 546, 14, RAYWHITE);
+            DrawText(TextFormat("Tong: %s km | %s phut", number(routeDistance).c_str(), number(routeTime).c_str()), 850, 574, 15, PBL_GREEN);
+            DrawText("Lo trinh:", 850, 610, 14, PBL_MUTED);
             std::string routeText;
-            for (int i = 0; i < pathCount; ++i) {
-                routeText += std::to_string(path[i]);
-                if (i + 1 < pathCount) routeText += " -> ";
+            for (size_t i = 0; i < routePath.size(); ++i) {
+                routeText += std::to_string(routePath[i]);
+                if (i + 1 < routePath.size()) routeText += " -> ";
             }
             if (routeText.size() > 50) routeText = routeText.substr(0, 47) + "...";
-            DrawText(routeText.c_str(), 850, 638, 14, PBL_YELLOW);
+            DrawText(routeText.c_str(), 850, 632, 14, PBL_YELLOW);
         } else {
-            DrawText("Chua co ket qua. Hay tim duong.", 850, 529, 14, PBL_MUTED);
+            DrawText("Chua co ket qua. Hay tim duong.", 850, 520, 14, PBL_MUTED);
         }
         DrawText("Chu thich:", 850, 688, 13, PBL_MUTED);
-        DrawCircle(860, 715, 6, PBL_GREEN); DrawText("Bat dau", 873, 708, 12, RAYWHITE);
-        DrawCircle(960, 715, 6, PBL_RED); DrawText("Dich den", 973, 708, 12, RAYWHITE);
-        DrawCircle(1064, 715, 6, PBL_YELLOW); DrawText("Tuyen/taxi", 1077, 708, 12, RAYWHITE);
+        DrawCircle(860, 715, 6, PBL_GREEN); DrawText("Taxi", 873, 708, 12, RAYWHITE);
+        DrawCircle(930, 715, 6, PBL_PICKUP); DrawText("Diem don", 943, 708, 12, RAYWHITE);
+        DrawCircle(1035, 715, 6, PBL_RED); DrawText("Diem den", 1048, 708, 12, RAYWHITE);
+        DrawCircle(860, 742, 6, PBL_BLUE); DrawText("Chang taxi den don", 873, 735, 12, RAYWHITE);
+        DrawCircle(1050, 742, 6, PBL_YELLOW); DrawText("Chang cho khach", 1063, 735, 12, RAYWHITE);
         DrawText("ESC: thoat | Du lieu doc tu thu muc Data", 34, 779, 12, PBL_MUTED);
         EndDrawing();
     }

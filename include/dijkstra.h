@@ -1,19 +1,31 @@
-#include "dijkstra.h"
+#ifndef DIJKSTRA_H
+#define DIJKSTRA_H
 #include <iostream>
 #include <cmath>
 #include <limits>
 #include <vector>
-
 using namespace std;
 
 
+#include "DataStructures/map/map.h"
+#include "DataStructures/priorityqueue/minheap.h"
 
+class dijkstra {
+    private:
+        void run(const map &m, int start_id, int end_id,
+                double (road::*weight)() const, 
+                int *path, int &count, int *road_ids);
 
+    public:
+        void shortestPath(const map &m, int start_id, int end_id,
+                          int *path, int &count, int *road_ids = nullptr);
+        void fastestPath(const map &m, int start_id, int end_id,
+                         int *path, int &count, int *road_ids = nullptr);
+};
 
-
-void dijkstra::run(const map &m, int start_id, int end_id,
-                   double (road::*weight)() const,
-                   int *path, int &count, int *road_ids)
+inline void dijkstra::run(const map &m, int start_id, int end_id,
+                          double (road::*weight)() const,
+                          int *path, int &count, int *road_ids)
 {
     count = 0;
     if(path == nullptr){
@@ -40,7 +52,7 @@ void dijkstra::run(const map &m, int start_id, int end_id,
     dist[start] = 0;
     minheap pq(2 * m.get_num_r() + 1);
     pq.push(hnode(start_id, 0));
-    
+
     while(!pq.isEmpty()) {
         hnode current = pq.pop();
         int u = m.find_i(current.getid_i());
@@ -83,8 +95,6 @@ void dijkstra::run(const map &m, int start_id, int end_id,
 
         return;
     }
-
-    
 
     int current = end;
     vector<int> reversed_roads;
@@ -133,12 +143,15 @@ void dijkstra::run(const map &m, int start_id, int end_id,
 
 }
 
-void dijkstra::shortestPath(const map &m, int start_id, int end_id,
-                            int *path, int &count, int *road_ids) {
+inline void dijkstra::shortestPath(const map &m, int start_id, int end_id,
+                                   int *path, int &count, int *road_ids) {
     run(m, start_id, end_id, &road::getdistance, path, count, road_ids);
 }
 
-void dijkstra::fastestPath(const map &m, int start_id, int end_id,
-                           int *path, int &count, int *road_ids) {
+inline void dijkstra::fastestPath(const map &m, int start_id, int end_id,
+                                  int *path, int &count, int *road_ids) {
     run(m, start_id, end_id, &road::gettime, path, count, road_ids);
 }
+
+
+#endif

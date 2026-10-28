@@ -1,17 +1,24 @@
 @echo off
 setlocal
 
-REM Raylib must be installed in the MSYS2 UCRT64 environment.
-REM Run this script from the project root using the UCRT64 terminal or VS Code terminal.
+cd /d "%~dp0"
 
-g++ -std=c++17 -Wall -Wextra -Wpedantic -I. gui_main.cpp Algorithms/dijkstra/dijkstra.cpp DataStructures/intersection/intersection.cpp DataStructures/map/adjnode.cpp DataStructures/map/linkedlist.cpp DataStructures/map/map.cpp DataStructures/priorityqueue/hnode.cpp DataStructures/priorityqueue/minheap.cpp DataStructures/road/road.cpp -o pbl2_gui.exe -lraylib -lopengl32 -lgdi32 -lwinmm
+where g++ >nul 2>nul
+if errorlevel 1 (
+    echo Build failed: g++ was not found. Use the MSYS2 UCRT64 environment.
+    exit /b 1
+)
+
+g++ -std=c++17 -Wall -Wextra -Wpedantic -Iinclude ^
+    gui_main.cpp ^
+    -o pbl2_gui.exe ^
+    -lraylib -lopengl32 -lgdi32 -lwinmm
 if errorlevel 1 (
     echo.
-    echo Build failed. Check that Raylib is installed and g++ is from MSYS2 UCRT64.
-    pause
+    echo Build failed. Check that Raylib is installed in MSYS2 UCRT64.
     exit /b 1
 )
 
 echo Build successful. Starting graphical interface...
 pbl2_gui.exe
-endlocal
+exit /b %errorlevel%
