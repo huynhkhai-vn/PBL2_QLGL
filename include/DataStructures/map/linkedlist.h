@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <utility>
 
+using namespace std;
+
 template <typename T>
 class linkedlist {
 public:
@@ -27,7 +29,7 @@ public:
 private:
     Node* head;
     Node* tail;
-    std::size_t size;
+    size_t size;
     void clear();
 
 public:
@@ -37,7 +39,7 @@ public:
     linkedlist& operator=(const linkedlist& other);
     void swap(linkedlist& other) noexcept;
     bool isEmpty() const;
-    std::size_t getSize() const;
+    size_t getSize() const;
     template <typename Value>
     void push(Value&& value);
     template <typename Predicate>
@@ -49,7 +51,7 @@ public:
 template <typename T>
 template <typename Value>
 linkedlist<T>::Node::Node(Value&& value, Node* next_node, Node* prev_node)
-    : data(std::forward<Value>(value)), next(next_node), prev(prev_node) {}
+    : data(forward<Value>(value)), next(next_node), prev(prev_node) {}
 
 template <typename T>
 const T& linkedlist<T>::Node::get_data() const {
@@ -105,10 +107,17 @@ linkedlist<T>& linkedlist<T>::operator=(const linkedlist& other) {
 
 template <typename T>
 void linkedlist<T>::swap(linkedlist& other) noexcept {
-    using std::swap;
-    swap(head, other.head);
-    swap(tail, other.tail);
-    swap(size, other.size);
+    Node* oldHead = head;
+    head = other.head;
+    other.head = oldHead;
+
+    Node* oldTail = tail;
+    tail = other.tail;
+    other.tail = oldTail;
+
+    size_t oldSize = size;
+    size = other.size;
+    other.size = oldSize;
 }
 
 template <typename T>
@@ -117,14 +126,14 @@ bool linkedlist<T>::isEmpty() const {
 }
 
 template <typename T>
-std::size_t linkedlist<T>::getSize() const {
+size_t linkedlist<T>::getSize() const {
     return size;
 }
 
 template <typename T>
 template <typename Value>
 void linkedlist<T>::push(Value&& value) {
-    Node* node = new Node(std::forward<Value>(value), nullptr, tail);
+    Node* node = new Node(forward<Value>(value), nullptr, tail);
     if (tail == nullptr) {
         head = node;
     } else {

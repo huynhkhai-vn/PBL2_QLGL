@@ -18,6 +18,8 @@ PROJECT CO 2 CACH CHAY:
 
 CAU TRUC CHINH
 - Data/: du lieu giao lo va duong.
+- include/BLL/: nghiep vu tim tuyen va giao dien repository.
+- include/DAL/: doc du lieu ban do tu file text.
 - include/DataStructures/: cac lop OOP va cau truc du lieu ban do.
 - include/dijkstra.h: thuat toan Dijkstra.
 - include/taxi.h: lop mo phong taxi goc.
@@ -31,3 +33,6 @@ LUU Y
 - build_gui.bat can GCC/MSYS2 UCRT64 va Raylib da duoc cai dat.
 - Ma nguon va thuat toan Dijkstra goc duoc giu lai; map duoc bo sung hai ham
   truy cap giao lo/duong theo chi so de ve ban do.
+- GUI goi RouteService (BLL); RouteService nhan IMapRepository; TextMapRepository
+  (DAL) doc intersections.txt va roads.txt. De thay doi nguon du lieu, hay thay
+  implementation repository tai diem khoi tao trong gui_main.cpp.

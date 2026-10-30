@@ -1,21 +1,25 @@
 #ifndef DIJKSTRA_H
 #define DIJKSTRA_H
-#include <iostream>
+
 #include <cmath>
+#include <cstddef>
+#include <iostream>
 #include <limits>
 #include <vector>
-using namespace std;
 
-
+#include "DataStructures/map/adjnode.h"
 #include "DataStructures/map/map.h"
+#include "DataStructures/road.h"
 #include "DataStructures/priorityqueue/hnode.h"
 #include "DataStructures/priorityqueue/minheap.h"
+
+using namespace std;
 
 struct hnode_cost_compare {
     bool operator()(const hnode& left, const hnode& right) const;
 };
 
-inline bool hnode_cost_compare::operator()(const hnode& left, const hnode& right) const {
+bool hnode_cost_compare::operator()(const hnode& left, const hnode& right) const {
     return left.get_cost() < right.get_cost();
 }
 
@@ -23,21 +27,26 @@ class dijkstra {
     private:
         void run(const map &m, int start_id, int end_id,
                 double (road::*weight)() const, 
-                int *path, int &count, int *road_ids);
+                int *path, int &count, int *road_ids, bool print_result);
     public:
         void shortestPath(const map &m, int start_id, int end_id,
-                          int *path, int &count, int *road_ids = nullptr);
+                          int *path, int &count, int *road_ids = nullptr,
+                          bool print_result = true);
         void fastestPath(const map &m, int start_id, int end_id,
-                         int *path, int &count, int *road_ids = nullptr);
+                         int *path, int &count, int *road_ids = nullptr,
+                         bool print_result = true);
 };
 
-inline void dijkstra::run(const map &m, int start_id, int end_id,
+void dijkstra::run(const map &m, int start_id, int end_id,
                           double (road::*weight)() const,
-                          int *path, int &count, int *road_ids)
+                          int *path, int &count, int *road_ids,
+                          bool print_result)
 {
     count = 0;
     if(path == nullptr){
-        cout << "Bo dem duong di khong hop le!" << endl;
+        if (print_result) {
+            cout << "Bo dem duong di khong hop le!" << endl;
+        }
         return;
     }
 
@@ -45,13 +54,15 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
     int end = m.find_i(end_id);
 
     if(start == -1 || end == -1) {
-        cout << "Giao lo khong ton tai!" << endl;
+        if (print_result) {
+            cout << "Giao lo khong ton tai!" << endl;
+        }
         return;
     }
 
     int n = m.get_num_i();
 
-    const double INF = std::numeric_limits<double>::infinity();
+    const double INF = numeric_limits<double>::infinity();
 
     vector<double> dist(n, INF);
     vector<int> parent(n, -1);
@@ -81,8 +92,10 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
             int v = m.find_i(adjacent.get_i());
             double w = (adjacent.get_r().*weight)();
 
-            if(!std::isfinite(w) || w < 0){
-                cout << "Trong so duong di khong hop le!" << endl;
+            if(!isfinite(w) || w < 0){
+                if (print_result) {
+                    cout << "Trong so duong di khong hop le!" << endl;
+                }
                 return;
             }
 
@@ -100,7 +113,9 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
     }
 
     if(dist[end] == INF) {
-        cout << "Khong tim thay duong di!" << endl;
+        if (print_result) {
+            cout << "Khong tim thay duong di!" << endl;
+        }
 
         return;
     }
@@ -129,37 +144,41 @@ inline void dijkstra::run(const map &m, int start_id, int end_id,
         }
     }
 
-    if(weight == &road::getdistance)
-        cout << "Duong di ngan nhat: ";
-    else
-        cout << "Duong di nhanh nhat: ";
+    if (print_result) {
+        if(weight == &road::getdistance)
+            cout << "Duong di ngan nhat: ";
+        else
+            cout << "Duong di nhanh nhat: ";
 
-    for(int i = 0; i < count; i++) {
-        cout << path[i];
+        for(int i = 0; i < count; i++) {
+            cout << path[i];
 
-        if(i < count - 1)
-            cout << " -> ";
+            if(i < count - 1)
+                cout << " -> ";
+        }
+
+        cout << endl;
+
+        if(weight == &road::getdistance)
+            cout << "Tong khoang cach: ";
+        else
+            cout << "Tong thoi gian: ";
+
+        cout << dist[end] << endl;
     }
 
-    cout << endl;
-
-    if(weight == &road::getdistance)
-        cout << "Tong khoang cach: ";
-    else
-        cout << "Tong thoi gian: ";
-
-    cout << dist[end] << endl;
-
 }
 
-inline void dijkstra::shortestPath(const map &m, int start_id, int end_id,
-                                   int *path, int &count, int *road_ids) {
-    run(m, start_id, end_id, &road::getdistance, path, count, road_ids);
+void dijkstra::shortestPath(const map &m, int start_id, int end_id,
+                                   int *path, int &count, int *road_ids,
+                                   bool print_result) {
+    run(m, start_id, end_id, &road::getdistance, path, count, road_ids, print_result);
 }
 
-inline void dijkstra::fastestPath(const map &m, int start_id, int end_id,
-                                  int *path, int &count, int *road_ids) {
-    run(m, start_id, end_id, &road::gettime, path, count, road_ids);
+void dijkstra::fastestPath(const map &m, int start_id, int end_id,
+                                  int *path, int &count, int *road_ids,
+                                  bool print_result) {
+    run(m, start_id, end_id, &road::gettime, path, count, road_ids, print_result);
 }
 
 

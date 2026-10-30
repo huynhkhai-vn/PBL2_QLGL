@@ -5,6 +5,8 @@
 #include <iostream>
 #include <memory>
 
+using namespace std;
+
 class taxi {
 private:
     int id_taxi;
@@ -34,36 +36,36 @@ public:
     void move(const map& m);
 };
 
-inline taxi::taxi(int id, int start_id)
+taxi::taxi(int id, int start_id)
     : id_taxi(id), current_id(start_id), status(0), total_time(0),
       total_distance(0), path(nullptr), road_ids(nullptr), path_size(0),
       path_index(0) {}
 
-inline taxi::~taxi() {
+taxi::~taxi() {
     delete[] path;
     delete[] road_ids;
 }
 
-inline int taxi::getid_taxi() const { return id_taxi; }
-inline int taxi::getcurrent_id() const { return current_id; }
-inline int taxi::getstatus() const { return status; }
-inline double taxi::gettotal_time() const { return total_time; }
-inline double taxi::gettotal_distance() const { return total_distance; }
+int taxi::getid_taxi() const { return id_taxi; }
+int taxi::getcurrent_id() const { return current_id; }
+int taxi::getstatus() const { return status; }
+double taxi::gettotal_time() const { return total_time; }
+double taxi::gettotal_distance() const { return total_distance; }
 
-inline void taxi::setPath(const int* new_path, int count) {
+void taxi::setPath(const int* new_path, int count) {
     setPath(new_path, count, nullptr);
 }
 
-inline void taxi::setPath(const int* new_path, int count, const int* new_road_ids) {
+void taxi::setPath(const int* new_path, int count, const int* new_road_ids) {
     if (count <= 0 || new_path == nullptr) {
         if (count > 0) {
-            std::cerr << "Khong the cai dat lo trinh rong!" << std::endl;
+            cerr << "Khong the cai dat lo trinh rong!" << endl;
         }
         return;
     }
 
-    std::unique_ptr<int[]> new_path_copy(new int[count]);
-    std::unique_ptr<int[]> road_copy(count > 1 ? new int[count - 1] : nullptr);
+    unique_ptr<int[]> new_path_copy(new int[count]);
+    unique_ptr<int[]> road_copy(count > 1 ? new int[count - 1] : nullptr);
     for (int i = 0; i < count; i++) {
         new_path_copy[i] = new_path[i];
     }
@@ -80,7 +82,7 @@ inline void taxi::setPath(const int* new_path, int count, const int* new_road_id
     status = (count > 1) ? 1 : 0;
 }
 
-inline void taxi::move(const map& m) {
+void taxi::move(const map& m) {
     if (status == 0 || path_index == path_size - 1) {
         return;
     }
@@ -93,8 +95,8 @@ inline void taxi::move(const map& m) {
         ? m.getRoadDistance(current_id, next_id)
         : m.getRoadDistanceById(road_ids[path_index], current_id, next_id);
     if (t < 0 || d < 0) {
-        std::cerr << "Khong tim thay duong noi hai giao lo trong lo trinh taxi!"
-                  << std::endl;
+        cerr << "Khong tim thay duong noi hai giao lo trong lo trinh taxi!"
+             << endl;
         status = 0;
         return;
     }

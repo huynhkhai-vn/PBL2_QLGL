@@ -1,6 +1,6 @@
 #include "raylib.h"
-#include "DataStructures/map/map.h"
-#include "dijkstra.h"
+#include "BLL/route_service.h"
+#include "DAL/text_map_repository.h"
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +9,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+using namespace std;
 
 namespace {
 constexpr int SCREEN_W = 1280;
@@ -41,36 +43,36 @@ bool button(Rectangle r, const char* label, bool active = true, bool selected = 
     return active && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 }
 
-std::string number(double value) {
-    std::ostringstream out;
-    out << std::fixed << std::setprecision(2) << value;
+string number(double value) {
+    ostringstream out;
+    out << fixed << setprecision(2) << value;
     return out.str();
 }
 }
 
 int main() {
-    map city;
-    if (!city.load_i("Data/intersections.txt") || !city.load_r("Data/roads.txt")) {
+    TextMapRepository repository;
+    RouteService routeService(repository);
+    if (!routeService.isReady()) {
         InitWindow(700, 180, "PBL2 - Loi du lieu du du lieu");
         BeginDrawing();
         ClearBackground(PBL_BG);
         DrawText("Khong doc duoc du lieu ban do!", 24, 30, 22, PBL_RED);
-        DrawText("Hay chay chuong trinh tu thu muc goc PBL2 - Copy.", 24, 75, 18, RAYWHITE);
+        DrawText(routeService.getLoadError().c_str(), 24, 75, 14, RAYWHITE);
         EndDrawing();
         WaitTime(3.0);
         CloseWindow();
         return 1;
     }
 
-    const int n = city.get_num_i();
+    const MapView& mapView = routeService.getMapView();
+    const int n = static_cast<int>(mapView.intersections.size());
     if (n < 2) return 1;
-    std::vector<int> firstPath(n), firstRoadIds(n), secondPath(n), secondRoadIds(n);
-    std::vector<int> routePath, routeRoadIds;
+    vector<int> routePath, routeRoadIds;
     int firstPathCount = 0;
-    int secondPathCount = 0;
     int taxiIndex = 0;
-    int pickupIndex = std::min(7, n - 1);
-    int destinationIndex = std::min(14, n - 1);
+    int pickupIndex = min(7, n - 1);
+    int destinationIndex = min(14, n - 1);
     int selectionTarget = 0;
     bool fastest = false;
     bool hasRoute = false;
@@ -84,84 +86,57 @@ int main() {
     double firstTime = 0.0;
     double secondDistance = 0.0;
     double secondTime = 0.0;
-    std::string status = "Chon taxi, diem don va dich tren ban do.";
+    string status = "Chon taxi, diem don va dich tren ban do.";
 
     auto calculateRoute = [&]() {
         firstPathCount = 0;
-        secondPathCount = 0;
         routePath.clear();
         routeRoadIds.clear();
-        dijkstra algorithm;
-        int taxiId = city.getIntersectionAt(taxiIndex).getid_i();
-        int pickupId = city.getIntersectionAt(pickupIndex).getid_i();
-        int destinationId = city.getIntersectionAt(destinationIndex).getid_i();
-        if (fastest) {
-            algorithm.fastestPath(city, taxiId, pickupId, firstPath.data(), firstPathCount, firstRoadIds.data());
-        } else {
-            algorithm.shortestPath(city, taxiId, pickupId, firstPath.data(), firstPathCount, firstRoadIds.data());
-        }
-        if (firstPathCount == 0) {
-            hasRoute = false;
-            taxiRunning = false;
-            status = "Khong co duong tu taxi den diem don.";
-            return;
-        }
-        if (fastest) {
-            algorithm.fastestPath(city, pickupId, destinationId, secondPath.data(), secondPathCount, secondRoadIds.data());
-        } else {
-            algorithm.shortestPath(city, pickupId, destinationId, secondPath.data(), secondPathCount, secondRoadIds.data());
-        }
-        hasRoute = secondPathCount > 0;
+        const RouteResult result = routeService.findTaxiRoute(
+            mapView.intersections[taxiIndex].id,
+            mapView.intersections[pickupIndex].id,
+            mapView.intersections[destinationIndex].id,
+            fastest ? RouteMode::Fastest : RouteMode::Shortest);
         taxiRunning = false;
-        routeDistance = 0.0;
-        routeTime = 0.0;
-        firstDistance = 0.0;
-        firstTime = 0.0;
-        secondDistance = 0.0;
-        secondTime = 0.0;
+        hasRoute = result.success;
         if (!hasRoute) {
-            status = "Khong co duong tu diem don den dich.";
+            routeDistance = routeTime = 0.0;
+            firstDistance = firstTime = 0.0;
+            secondDistance = secondTime = 0.0;
+            status = result.error;
             return;
         }
 
-        routePath.insert(routePath.end(), firstPath.begin(), firstPath.begin() + firstPathCount);
-        routeRoadIds.insert(routeRoadIds.end(), firstRoadIds.begin(), firstRoadIds.begin() + firstPathCount - 1);
-        routePath.insert(routePath.end(), secondPath.begin() + 1, secondPath.begin() + secondPathCount);
-        routeRoadIds.insert(routeRoadIds.end(), secondRoadIds.begin(), secondRoadIds.begin() + secondPathCount - 1);
-        for (int i = 0; i < static_cast<int>(routeRoadIds.size()); ++i) {
-            double distance = std::max(0.0, city.getRoadDistanceById(routeRoadIds[i], routePath[i], routePath[i + 1]));
-            double time = std::max(0.0, city.getRoadTimeById(routeRoadIds[i], routePath[i], routePath[i + 1]));
-            routeDistance += distance;
-            routeTime += time;
-            if (i < firstPathCount - 1) {
-                firstDistance += distance;
-                firstTime += time;
-            } else {
-                secondDistance += distance;
-                secondTime += time;
-            }
-        }
+        routePath = result.intersectionIds;
+        routeRoadIds = result.roadIds;
+        firstPathCount = static_cast<int>(result.firstLegEdgeCount) + 1;
+        firstDistance = result.firstLegDistance;
+        firstTime = result.firstLegTime;
+        secondDistance = result.secondLegDistance;
+        secondTime = result.secondLegTime;
+        routeDistance = result.totalDistance;
+        routeTime = result.totalTime;
         status = fastest ? "Da tim hai chang nhanh nhat." : "Da tim hai chang ngan nhat.";
     };
 
     auto pointFor = [&](int id) -> ScreenPoint {
         const double minX = 10.0, maxX = 90.0, minY = 15.0, maxY = 100.0;
-        const intersection* item = nullptr;
-        for (int i = 0; i < city.get_num_i(); ++i) {
-            if (city.getIntersectionAt(i).getid_i() == id) {
-                item = &city.getIntersectionAt(i);
+        const IntersectionView* item = nullptr;
+        for (const IntersectionView& candidate : mapView.intersections) {
+            if (candidate.id == id) {
+                item = &candidate;
                 break;
             }
         }
         if (!item) return { 0, 0 };
-        float baseX = 45.0f + (float)((item->getx() - minX) / (maxX - minX) * 650.0);
-        float baseY = 690.0f - (float)((item->gety() - minY) / (maxY - minY) * 560.0);
+        float baseX = 45.0f + (float)((item->x - minX) / (maxX - minX) * 650.0);
+        float baseY = 690.0f - (float)((item->y - minY) / (maxY - minY) * 560.0);
         return { MAP_CENTER.x + (baseX - MAP_CENTER.x) * mapZoom + mapPan.x,
                  MAP_CENTER.y + (baseY - MAP_CENTER.y) * mapZoom + mapPan.y };
     };
 
     auto zoomAt = [&](float newZoom, Vector2 anchor) {
-        newZoom = std::clamp(newZoom, 0.75f, 4.0f);
+        newZoom = clamp(newZoom, 0.75f, 4.0f);
         float ratio = newZoom / mapZoom;
         mapPan.x = anchor.x + (MAP_CENTER.x - anchor.x + mapPan.x) * ratio - MAP_CENTER.x;
         mapPan.y = anchor.y + (MAP_CENTER.y - anchor.y + mapPan.y) * ratio - MAP_CENTER.y;
@@ -174,7 +149,7 @@ int main() {
         Vector2 mouse = GetMousePosition();
         if (CheckCollisionPointRec(mouse, MAP_VIEWPORT)) {
             float wheel = GetMouseWheelMove();
-            if (wheel != 0.0f) zoomAt(mapZoom * std::pow(1.2f, wheel), mouse);
+            if (wheel != 0.0f) zoomAt(mapZoom * pow(1.2f, wheel), mouse);
             if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
                 Vector2 delta = GetMouseDelta();
                 mapPan.x += delta.x;
@@ -198,16 +173,15 @@ int main() {
         BeginScissorMode((int)MAP_VIEWPORT.x, (int)MAP_VIEWPORT.y,
                          (int)MAP_VIEWPORT.width, (int)MAP_VIEWPORT.height);
         // Draw all roads first; selected route roads are highlighted.
-        for (int i = 0; i < city.get_num_r(); ++i) {
-            const road& r = city.getRoadAt(i);
-            ScreenPoint a = pointFor(r.getstart_id());
-            ScreenPoint b = pointFor(r.getend_id());
+        for (const RoadView& r : mapView.roads) {
+            ScreenPoint a = pointFor(r.startId);
+            ScreenPoint b = pointFor(r.endId);
             bool firstLeg = false;
             bool secondLeg = false;
             if (hasRoute) {
-                const int firstLegEdges = std::max(0, firstPathCount - 1);
+                const int firstLegEdges = max(0, firstPathCount - 1);
                 for (int j = 0; j < static_cast<int>(routeRoadIds.size()); ++j) {
-                    if (routeRoadIds[j] == r.getid_r()) {
+                    if (routeRoadIds[j] == r.id) {
                         if (j < firstLegEdges) firstLeg = true;
                         else secondLeg = true;
                     }
@@ -217,7 +191,7 @@ int main() {
             DrawLineEx({ a.x, a.y }, { b.x, b.y }, firstLeg || secondLeg ? 5.0f : 2.0f, roadColor);
             if (firstLeg || secondLeg) {
                 char label[32];
-                std::snprintf(label, sizeof(label), "%.1f", r.getdistance());
+                snprintf(label, sizeof(label), "%.1f", r.distance);
                 DrawText(label, (int)((a.x + b.x) / 2 + 3), (int)((a.y + b.y) / 2 - 14), 10,
                          firstLeg ? PBL_BLUE : PBL_YELLOW);
             }
@@ -228,39 +202,39 @@ int main() {
         bool drawTaxi = false;
         if (taxiRunning && hasRoute && !routePath.empty()) {
             double elapsed = GetTime() - taxiStarted;
-            double duration = std::max(1.0, (double)(routePath.size() - 1) * 1.1);
+            double duration = max(1.0, (double)(routePath.size() - 1) * 1.1);
             double progress = elapsed / duration;
-            double segmentPos = std::min(progress, 0.9999) * std::max(1, static_cast<int>(routePath.size()) - 1);
-            int segment = std::min((int)segmentPos, std::max(0, static_cast<int>(routePath.size()) - 2));
+            double segmentPos = min(progress, 0.9999) * max(1, static_cast<int>(routePath.size()) - 1);
+            int segment = min((int)segmentPos, max(0, static_cast<int>(routePath.size()) - 2));
             if (progress >= 1.0) {
                 taxiRunning = false;
                 status = "Taxi da dua khach den noi.";
-            } else if (segment < std::max(0, firstPathCount - 1)) {
+            } else if (segment < max(0, firstPathCount - 1)) {
                 status = "Taxi dang den diem don khach.";
             } else {
                 status = "Taxi dang cho khach.";
             }
             float t = (float)(segmentPos - segment);
             ScreenPoint a = pointFor(routePath[segment]);
-            ScreenPoint b = pointFor(routePath[std::min(segment + 1, static_cast<int>(routePath.size()) - 1)]);
+            ScreenPoint b = pointFor(routePath[min(segment + 1, static_cast<int>(routePath.size()) - 1)]);
             taxiPoint = { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
             drawTaxi = true;
         }
 
         bool intersectionSelected = false;
         for (int i = 0; i < n; ++i) {
-            const intersection& node = city.getIntersectionAt(i);
-            ScreenPoint p = pointFor(node.getid_i());
+            const IntersectionView& node = mapView.intersections[i];
+            ScreenPoint p = pointFor(node.id);
             Color c = PBL_BLUE;
             if (i == taxiIndex) c = PBL_GREEN;
             if (i == pickupIndex) c = PBL_PICKUP;
             if (i == destinationIndex) c = PBL_RED;
             if (hasRoute) {
                 for (size_t j = 1; j + 1 < routePath.size(); ++j) {
-                    if (routePath[j] == node.getid_i() && i != pickupIndex) c = PBL_YELLOW;
+                    if (routePath[j] == node.id && i != pickupIndex) c = PBL_YELLOW;
                 }
             }
-            bool namedIntersection = !node.getname_i().empty();
+            bool namedIntersection = !node.name.empty();
             bool selectedIntersection = i == taxiIndex || i == pickupIndex || i == destinationIndex;
             Vector2 mouse = GetMousePosition();
             float dx = mouse.x - p.x;
@@ -280,9 +254,9 @@ int main() {
             DrawCircleLines((int)p.x, (int)p.y, nodeRadius, RAYWHITE);
             if (namedIntersection) {
                 char idText[12];
-                std::snprintf(idText, sizeof(idText), "%d", node.getid_i());
+                snprintf(idText, sizeof(idText), "%d", node.id);
                 DrawText(idText, (int)p.x - MeasureText(idText, 12) / 2, (int)p.y - 6, 12, RAYWHITE);
-                std::string name = node.getname_i();
+                string name = node.name;
                 if (name.size() > 20) name = name.substr(0, 18) + "..";
                 DrawText(name.c_str(), (int)p.x + 14, (int)p.y - 8, 11, RAYWHITE);
             }
@@ -309,7 +283,6 @@ int main() {
         if (button({ 850, 380, 398, 38 }, "Dat lai", !taxiRunning)) {
             hasRoute = false;
             firstPathCount = 0;
-            secondPathCount = 0;
             routePath.clear();
             routeRoadIds.clear();
             routeDistance = 0;
@@ -318,12 +291,12 @@ int main() {
         }
         DrawText("DIEU PHOI CHUYEN TAXI", 846, 105, 20, RAYWHITE);
         DrawText("Bam nut vai tro, sau do chon giao lo tren ban do.", 850, 190, 12, PBL_MUTED);
-        const intersection& taxiPosition = city.getIntersectionAt(taxiIndex);
-        const intersection& pickup = city.getIntersectionAt(pickupIndex);
-        const intersection& destination = city.getIntersectionAt(destinationIndex);
-        DrawText(TextFormat("Taxi: %d - %s", taxiPosition.getid_i(), taxiPosition.getname_i().c_str()), 850, 210, 14, PBL_GREEN);
-        DrawText(TextFormat("Don khach: %d - %s", pickup.getid_i(), pickup.getname_i().c_str()), 850, 232, 14, PBL_PICKUP);
-        DrawText(TextFormat("Diem den: %d - %s", destination.getid_i(), destination.getname_i().c_str()), 850, 254, 14, PBL_RED);
+        const IntersectionView& taxiPosition = mapView.intersections[taxiIndex];
+        const IntersectionView& pickup = mapView.intersections[pickupIndex];
+        const IntersectionView& destination = mapView.intersections[destinationIndex];
+        DrawText(TextFormat("Taxi: %d - %s", taxiPosition.id, taxiPosition.name.c_str()), 850, 210, 14, PBL_GREEN);
+        DrawText(TextFormat("Don khach: %d - %s", pickup.id, pickup.name.c_str()), 850, 232, 14, PBL_PICKUP);
+        DrawText(TextFormat("Diem den: %d - %s", destination.id, destination.name.c_str()), 850, 254, 14, PBL_RED);
 
         DrawText("KET QUA CHUYEN DI", 850, 438, 19, RAYWHITE);
         DrawText("Trang thai:", 850, 466, 14, PBL_MUTED);
@@ -333,9 +306,9 @@ int main() {
             DrawText(TextFormat("Don -> dich: %s km | %s phut", number(secondDistance).c_str(), number(secondTime).c_str()), 850, 546, 14, RAYWHITE);
             DrawText(TextFormat("Tong: %s km | %s phut", number(routeDistance).c_str(), number(routeTime).c_str()), 850, 574, 15, PBL_GREEN);
             DrawText("Lo trinh:", 850, 610, 14, PBL_MUTED);
-            std::string routeText;
+            string routeText;
             for (size_t i = 0; i < routePath.size(); ++i) {
-                routeText += std::to_string(routePath[i]);
+                routeText += to_string(routePath[i]);
                 if (i + 1 < routePath.size()) routeText += " -> ";
             }
             if (routeText.size() > 50) routeText = routeText.substr(0, 47) + "...";

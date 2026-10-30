@@ -2,6 +2,8 @@
 #define ROAD_H
 #include <iostream>
 
+using namespace std;
+
 class road {
     private:
         int id_r;
@@ -27,22 +29,22 @@ class road {
 
 };
 
-inline road::road(int id_r, int start_id, int end_id, double time, double distance)
+road::road(int id_r, int start_id, int end_id, double time, double distance)
     : id_r(id_r), start_id(start_id), end_id(end_id), time(time), distance(distance) {}
 
-inline road::road(const road &other) = default;
-inline road& road::operator=(const road& other) = default;
-inline road::~road() = default;
+road::road(const road &other) = default;
+road& road::operator=(const road& other) = default;
+road::~road() = default;
 
-inline int road::getid_r() const { return id_r; }
-inline int road::getstart_id() const { return start_id; }
-inline int road::getend_id() const { return end_id; }
-inline double road::gettime() const { return time; }
-inline double road::getdistance() const { return distance; }
+int road::getid_r() const { return id_r; }
+int road::getstart_id() const { return start_id; }
+int road::getend_id() const { return end_id; }
+double road::gettime() const { return time; }
+double road::getdistance() const { return distance; }
 
-inline void road::show() const {
-    std::cout << id_r << " " << start_id << " " << end_id << " "
-              << time << " " << distance << std::endl;
+void road::show() const {
+    cout << id_r << " " << start_id << " " << end_id << " "
+         << time << " " << distance << endl;
 }
 
 #endif

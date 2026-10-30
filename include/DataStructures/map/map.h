@@ -3,9 +3,12 @@
 #ifndef MAP_H
 #define MAP_H
 
+#include "../intersection.h"
+#include "../road.h"
 #include "adjnode.h"
 #include "linkedlist.h"
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -17,29 +20,6 @@
 using namespace std;
 
 class dijkstra;
-
-namespace map_detail {
-template <typename T>
-inline bool parse_value(const string& text, T& value) {
-    istringstream stream(text);
-    stream >> value;
-    if (stream.fail()) {
-        return false;
-    }
-    stream >> ws;
-    return stream.eof();
-}
-
-inline bool split_fields(const string& line, size_t expected, vector<string>& fields) {
-    fields.clear();
-    string field;
-    stringstream stream(line);
-    while (getline(stream, field, '|')) {
-        fields.push_back(field);
-    }
-    return fields.size() == expected;
-}
-}
 
 class map {
     friend class dijkstra;
@@ -91,7 +71,7 @@ public:
     void show_map() const;
 };
 
-inline map::map(int size_i, int size_r)
+map::map(int size_i, int size_r)
     : intersections(nullptr), num_i(0), size_i(size_i),
       roads(nullptr), num_r(0), size_r(size_r), graph(nullptr) {
     if (size_i < 0 || size_r < 0) {
@@ -107,17 +87,17 @@ inline map::map(int size_i, int size_r)
     graph = new_graph.release();
 }
 
-inline map::~map() {
+map::~map() {
     delete[] intersections;
     delete[] roads;
     delete[] graph;
 }
 
-inline bool map::add_i(intersection i) {
+bool map::add_i(intersection i) {
     if (isFull_i() || find_i(i.getid_i()) != -1) {
         return false;
     }
-    if (!std::isfinite(i.getx()) || !std::isfinite(i.gety())) {
+    if (!isfinite(i.getx()) || !isfinite(i.gety())) {
         return false;
     }
 
@@ -126,7 +106,7 @@ inline bool map::add_i(intersection i) {
     return true;
 }
 
-inline void map::remove_i(int id_i) {
+void map::remove_i(int id_i) {
     int index = find_i(id_i);
     if (index == -1) {
         return;
@@ -148,11 +128,11 @@ inline void map::remove_i(int id_i) {
     graph[num_i] = linkedlist<AdjNode>();
 }
 
-inline bool map::add_r(road r) {
+bool map::add_r(road r) {
     if (isFull_r() || find_r(r.getid_r()) != -1) {
         return false;
     }
-    if (!std::isfinite(r.gettime()) || !std::isfinite(r.getdistance()) ||
+    if (!isfinite(r.gettime()) || !isfinite(r.getdistance()) ||
         r.gettime() < 0 || r.getdistance() < 0) {
         return false;
     }
@@ -171,7 +151,7 @@ inline bool map::add_r(road r) {
     return true;
 }
 
-inline void map::remove_r(int id_r) {
+void map::remove_r(int id_r) {
     int index = find_r(id_r);
     if (index == -1) {
         return;
@@ -194,26 +174,26 @@ inline void map::remove_r(int id_r) {
     num_r--;
 }
 
-inline int map::get_num_i() const { return num_i; }
-inline int map::get_size_i() const { return size_i; }
-inline int map::get_num_r() const { return num_r; }
-inline int map::get_size_r() const { return size_r; }
+int map::get_num_i() const { return num_i; }
+int map::get_size_i() const { return size_i; }
+int map::get_num_r() const { return num_r; }
+int map::get_size_r() const { return size_r; }
 
-inline const intersection& map::getIntersectionAt(int index) const {
+const intersection& map::getIntersectionAt(int index) const {
     if (index < 0 || index >= num_i) {
         throw out_of_range("Intersection index out of range");
     }
     return intersections[index];
 }
 
-inline const road& map::getRoadAt(int index) const {
+const road& map::getRoadAt(int index) const {
     if (index < 0 || index >= num_r) {
         throw out_of_range("Road index out of range");
     }
     return roads[index];
 }
 
-inline double map::getRoadTime(int start_id, int end_id) const {
+double map::getRoadTime(int start_id, int end_id) const {
     double result = -1;
     for (int i = 0; i < num_r; i++) {
         if ((roads[i].getstart_id() == start_id && roads[i].getend_id() == end_id) ||
@@ -227,7 +207,7 @@ inline double map::getRoadTime(int start_id, int end_id) const {
     return result;
 }
 
-inline double map::getRoadDistance(int start_id, int end_id) const {
+double map::getRoadDistance(int start_id, int end_id) const {
     double result = -1;
     for (int i = 0; i < num_r; i++) {
         if ((roads[i].getstart_id() == start_id && roads[i].getend_id() == end_id) ||
@@ -241,7 +221,7 @@ inline double map::getRoadDistance(int start_id, int end_id) const {
     return result;
 }
 
-inline double map::getRoadTimeById(int id_r, int start_id, int end_id) const {
+double map::getRoadTimeById(int id_r, int start_id, int end_id) const {
     int index = find_r(id_r);
     if (index == -1 ||
         !((roads[index].getstart_id() == start_id && roads[index].getend_id() == end_id) ||
@@ -251,7 +231,7 @@ inline double map::getRoadTimeById(int id_r, int start_id, int end_id) const {
     return roads[index].gettime();
 }
 
-inline double map::getRoadDistanceById(int id_r, int start_id, int end_id) const {
+double map::getRoadDistanceById(int id_r, int start_id, int end_id) const {
     int index = find_r(id_r);
     if (index == -1 ||
         !((roads[index].getstart_id() == start_id && roads[index].getend_id() == end_id) ||
@@ -261,12 +241,12 @@ inline double map::getRoadDistanceById(int id_r, int start_id, int end_id) const
     return roads[index].getdistance();
 }
 
-inline int map::isEmpty_i() const { return num_i == 0 ? 1 : 0; }
-inline int map::isFull_i() const { return num_i == size_i ? 1 : 0; }
-inline int map::isEmpty_r() const { return num_r == 0 ? 1 : 0; }
-inline int map::isFull_r() const { return num_r == size_r ? 1 : 0; }
+int map::isEmpty_i() const { return num_i == 0 ? 1 : 0; }
+int map::isFull_i() const { return num_i == size_i ? 1 : 0; }
+int map::isEmpty_r() const { return num_r == 0 ? 1 : 0; }
+int map::isFull_r() const { return num_r == size_r ? 1 : 0; }
 
-inline int map::find_i(int id_i) const {
+int map::find_i(int id_i) const {
     for (int i = 0; i < num_i; i++) {
         if (intersections[i].getid_i() == id_i) {
             return i;
@@ -275,7 +255,7 @@ inline int map::find_i(int id_i) const {
     return -1;
 }
 
-inline int map::find_r(int id_r) const {
+int map::find_r(int id_r) const {
     for (int i = 0; i < num_r; i++) {
         if (roads[i].getid_r() == id_r) {
             return i;
@@ -284,7 +264,7 @@ inline int map::find_r(int id_r) const {
     return -1;
 }
 
-inline bool map::load_i(const string& filename) {
+bool map::load_i(const string& filename) {
     ifstream fin(filename);
     if (!fin) {
         cerr << "Khong mo duoc file giao lo: " << filename << endl;
@@ -292,25 +272,18 @@ inline bool map::load_i(const string& filename) {
     }
 
     string line;
-    size_t line_number = 0;
     while (getline(fin, line)) {
-        ++line_number;
         if (line.empty()) {
             continue;
         }
         vector<string> fields;
-        int id;
-        double x, y;
-        if (!map_detail::split_fields(line, 4, fields) ||
-            !map_detail::parse_value(fields[0], id) ||
-            !map_detail::parse_value(fields[2], x) ||
-            !map_detail::parse_value(fields[3], y) ||
-            !std::isfinite(x) || !std::isfinite(y) ||
-            !add_i(intersection(id, fields[1], x, y))) {
-            cerr << "Du lieu giao lo khong hop le tai "
-                 << filename << ":" << line_number << endl;
-            return false;
+        stringstream stream(line);
+        string field;
+        while (getline(stream, field, '|')) {
+            fields.push_back(field);
         }
+        add_i(intersection(stoi(fields[0]), fields[1],
+                           stod(fields[2]), stod(fields[3])));
     }
     if (fin.bad()) {
         cerr << "Loi khi doc file giao lo: " << filename << endl;
@@ -319,7 +292,7 @@ inline bool map::load_i(const string& filename) {
     return true;
 }
 
-inline bool map::load_r(const string& filename) {
+bool map::load_r(const string& filename) {
     ifstream fin(filename);
     if (!fin) {
         cerr << "Khong mo duoc file duong: " << filename << endl;
@@ -327,27 +300,18 @@ inline bool map::load_r(const string& filename) {
     }
 
     string line;
-    size_t line_number = 0;
     while (getline(fin, line)) {
-        ++line_number;
         if (line.empty()) {
             continue;
         }
         vector<string> fields;
-        int id, start, end;
-        double time, distance;
-        if (!map_detail::split_fields(line, 5, fields) ||
-            !map_detail::parse_value(fields[0], id) ||
-            !map_detail::parse_value(fields[1], start) ||
-            !map_detail::parse_value(fields[2], end) ||
-            !map_detail::parse_value(fields[3], time) ||
-            !map_detail::parse_value(fields[4], distance) ||
-            !std::isfinite(time) || !std::isfinite(distance) ||
-            !add_r(road(id, start, end, time, distance))) {
-            cerr << "Du lieu duong khong hop le tai "
-                 << filename << ":" << line_number << endl;
-            return false;
+        stringstream stream(line);
+        string field;
+        while (getline(stream, field, '|')) {
+            fields.push_back(field);
         }
+        add_r(road(stoi(fields[0]), stoi(fields[1]), stoi(fields[2]),
+                   stod(fields[3]), stod(fields[4])));
     }
     if (fin.bad()) {
         cerr << "Loi khi doc file duong: " << filename << endl;
@@ -356,7 +320,7 @@ inline bool map::load_r(const string& filename) {
     return true;
 }
 
-inline void map::show_i() const {
+void map::show_i() const {
     for (int i = 0; i < num_i; i++) {
         cout << intersections[i].getid_i() << " "
              << intersections[i].getname_i() << " "
@@ -365,7 +329,7 @@ inline void map::show_i() const {
     }
 }
 
-inline void map::show_r() const {
+void map::show_r() const {
     for (int i = 0; i < num_r; i++) {
         cout << roads[i].getid_r() << " "
              << roads[i].getstart_id() << " "
@@ -375,7 +339,7 @@ inline void map::show_r() const {
     }
 }
 
-inline void map::show_map() const {
+void map::show_map() const {
     for (int i = 0; i < num_i; i++) {
         cout << "Intersection "
              << intersections[i].getid_i()
