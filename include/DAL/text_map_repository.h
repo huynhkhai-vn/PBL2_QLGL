@@ -30,19 +30,24 @@ TextMapRepository::TextMapRepository(
 
 bool TextMapRepository::load(map& target, string& error) const {
     error.clear();
-    if (!target.load_i(intersectionsFile)) {
-        error = "Khong the nap giao lo tu file: " + intersectionsFile;
+    try {
+        if (!target.load_i(intersectionsFile)) {
+            error = "Khong the nap giao lo tu file: " + intersectionsFile;
+            return false;
+        }
+        if (!target.load_r(roadsFile)) {
+            error = "Khong the nap duong tu file: " + roadsFile;
+            return false;
+        }
+        if (target.get_num_i() == 0) {
+            error = "Du lieu ban do khong co giao lo.";
+            return false;
+        }
+        return true;
+    } catch (const exception& exception) {
+        error = exception.what();
         return false;
     }
-    if (!target.load_r(roadsFile)) {
-        error = "Khong the nap duong tu file: " + roadsFile;
-        return false;
-    }
-    if (target.get_num_i() == 0) {
-        error = "Du lieu ban do khong co giao lo.";
-        return false;
-    }
-    return true;
 }
 
 bool TextMapRepository::save(const map& source, string& error) const {

@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <fstream>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -80,13 +79,23 @@ map::map(int size_i, int size_r)
         throw invalid_argument("Map capacities cannot be negative");
     }
 
-    unique_ptr<intersection[]> new_intersections(new intersection[size_i]);
-    unique_ptr<road[]> new_roads(new road[size_r]);
-    unique_ptr<linkedlist<AdjNode>[]> new_graph(new linkedlist<AdjNode>[size_i]);
+    intersection* new_intersections = nullptr;
+    road* new_roads = nullptr;
+    linkedlist<AdjNode>* new_graph = nullptr;
+    try {
+        new_intersections = new intersection[size_i];
+        new_roads = new road[size_r];
+        new_graph = new linkedlist<AdjNode>[size_i];
+    } catch (...) {
+        delete[] new_intersections;
+        delete[] new_roads;
+        delete[] new_graph;
+        throw;
+    }
 
-    intersections = new_intersections.release();
-    roads = new_roads.release();
-    graph = new_graph.release();
+    intersections = new_intersections;
+    roads = new_roads;
+    graph = new_graph;
 }
 
 map::~map() {
@@ -292,12 +301,13 @@ int map::find_r(int id_r) const {
 bool map::load_i(const string& filename) {
     ifstream fin(filename);
     if (!fin) {
-        cerr << "Khong mo duoc file giao lo: " << filename << endl;
-        return false;
+        throw runtime_error("Khong mo duoc file giao lo: " + filename);
     }
 
     string line;
+    size_t lineNumber = 0;
     while (getline(fin, line)) {
+        ++lineNumber;
         if (line.empty()) {
             continue;
         }
@@ -307,12 +317,35 @@ bool map::load_i(const string& filename) {
         while (getline(stream, field, '|')) {
             fields.push_back(field);
         }
-        add_i(intersection(stoi(fields[0]), fields[1],
-                           stod(fields[2]), stod(fields[3])));
+        if (fields.size() != 4) {
+            throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                ": giao lo can co 4 truong.");
+        }
+
+        try {
+            size_t idLength = 0, xLength = 0, yLength = 0;
+            int id = stoi(fields[0], &idLength);
+            double x = stod(fields[2], &xLength);
+            double y = stod(fields[3], &yLength);
+            if (idLength != fields[0].size() || xLength != fields[2].size() ||
+                yLength != fields[3].size()) {
+                throw invalid_argument("Du lieu so chua ky tu khong hop le.");
+            }
+            if (!add_i(intersection(id, fields[1], x, y))) {
+                throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                    ": ID giao lo bi trung, toa do khong hop le "
+                                    "hoac vuot suc chua ban do.");
+            }
+        } catch (const invalid_argument& error) {
+            throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                ": " + error.what());
+        } catch (const out_of_range& error) {
+            throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                ": " + error.what());
+        }
     }
     if (fin.bad()) {
-        cerr << "Loi khi doc file giao lo: " << filename << endl;
-        return false;
+        throw runtime_error("Loi khi doc file giao lo: " + filename);
     }
     return true;
 }
@@ -320,12 +353,13 @@ bool map::load_i(const string& filename) {
 bool map::load_r(const string& filename) {
     ifstream fin(filename);
     if (!fin) {
-        cerr << "Khong mo duoc file duong: " << filename << endl;
-        return false;
+        throw runtime_error("Khong mo duoc file duong: " + filename);
     }
 
     string line;
+    size_t lineNumber = 0;
     while (getline(fin, line)) {
+        ++lineNumber;
         if (line.empty()) {
             continue;
         }
@@ -335,12 +369,39 @@ bool map::load_r(const string& filename) {
         while (getline(stream, field, '|')) {
             fields.push_back(field);
         }
-        add_r(road(stoi(fields[0]), stoi(fields[1]), stoi(fields[2]),
-                   stod(fields[3]), stod(fields[4])));
+        if (fields.size() != 5) {
+            throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                ": duong can co 5 truong.");
+        }
+
+        try {
+            size_t idLength = 0, startLength = 0, endLength = 0;
+            size_t timeLength = 0, distanceLength = 0;
+            int id = stoi(fields[0], &idLength);
+            int startId = stoi(fields[1], &startLength);
+            int endId = stoi(fields[2], &endLength);
+            double time = stod(fields[3], &timeLength);
+            double distance = stod(fields[4], &distanceLength);
+            if (idLength != fields[0].size() || startLength != fields[1].size() ||
+                endLength != fields[2].size() || timeLength != fields[3].size() ||
+                distanceLength != fields[4].size()) {
+                throw invalid_argument("Du lieu so chua ky tu khong hop le.");
+            }
+            if (!add_r(road(id, startId, endId, time, distance))) {
+                throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                    ": ID duong bi trung, giao lo khong ton tai, "
+                                    "trong so khong hop le hoac vuot suc chua ban do.");
+            }
+        } catch (const invalid_argument& error) {
+            throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                ": " + error.what());
+        } catch (const out_of_range& error) {
+            throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                ": " + error.what());
+        }
     }
     if (fin.bad()) {
-        cerr << "Loi khi doc file duong: " << filename << endl;
-        return false;
+        throw runtime_error("Loi khi doc file duong: " + filename);
     }
     return true;
 }

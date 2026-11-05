@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <exception>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -65,7 +67,7 @@ bool parseDouble(const string& text, double& value) {
 }
 }
 
-int main() {
+int runGui() {
     TextMapRepository repository;
     RouteService routeService(repository);
     if (!routeService.isReady()) {
@@ -602,4 +604,15 @@ int main() {
     }
     CloseWindow();
     return 0;
+}
+
+int main() {
+    try {
+        return runGui();
+    } catch (const exception& error) {
+        cerr << "Loi ngoai le: " << error.what() << endl;
+    } catch (...) {
+        cerr << "Loi khong xac dinh." << endl;
+    }
+    return 1;
 }

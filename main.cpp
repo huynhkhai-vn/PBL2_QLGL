@@ -1,4 +1,5 @@
 #include <iostream>
+#include <exception>
 #include <vector>
 #include "DataStructures/map/map.h"
 #include "dijkstra.h"
@@ -6,7 +7,7 @@
 
 using namespace std;
 
-int main() {
+int runConsole() {
     cout << "===== BAT DAU KIEM TRA PBL2 =====" << endl;
 
     // 1. Khoi tao ban do va doc du lieu
@@ -90,4 +91,15 @@ int main() {
     cout << "===== KET THUC KIEM TRA =====" << endl;
 
     return 0;
+}
+
+int main() {
+    try {
+        return runConsole();
+    } catch (const exception& error) {
+        cerr << "Loi ngoai le: " << error.what() << endl;
+    } catch (...) {
+        cerr << "Loi khong xac dinh." << endl;
+    }
+    return 1;
 }
