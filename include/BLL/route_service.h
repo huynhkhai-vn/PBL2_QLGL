@@ -3,6 +3,7 @@
 
 #include "BLL/map_repository.h"
 #include "dijkstra.h"
+#include <cmath>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -50,6 +51,7 @@ struct RouteResult {
 
 class RouteService {
 private:
+    const IMapRepository& repository;
     map city;
     MapView mapView;
     string loadError;
@@ -64,10 +66,17 @@ public:
     const string& getLoadError() const;
     const MapView& getMapView() const;
     RouteResult findTaxiRoute(int taxiId, int pickupId, int destinationId, RouteMode mode) const;
+    bool addIntersection(const IntersectionView& item, string& error);
+    bool updateIntersection(int id, const IntersectionView& item, string& error);
+    bool removeIntersection(int id, string& error);
+    bool addRoad(const RoadView& item, string& error);
+    bool updateRoad(int id, const RoadView& item, string& error);
+    bool removeRoad(int id, string& error);
 };
 
 RouteService::RouteService(const IMapRepository& repository)
-    : city(), mapView(), loadError(), ready(repository.load(city, loadError)) {
+    : repository(repository), city(), mapView(), loadError(),
+      ready(repository.load(city, loadError)) {
     if (ready) {
         createMapView();
     }
@@ -86,6 +95,8 @@ const MapView& RouteService::getMapView() const {
 }
 
 void RouteService::createMapView() {
+    mapView.intersections.clear();
+    mapView.roads.clear();
     mapView.intersections.reserve(static_cast<size_t>(city.get_num_i()));
     for (int i = 0; i < city.get_num_i(); ++i) {
         const intersection& item = city.getIntersectionAt(i);
@@ -100,6 +111,88 @@ void RouteService::createMapView() {
             {item.getid_r(), item.getstart_id(), item.getend_id(),
              item.gettime(), item.getdistance()});
     }
+}
+
+bool RouteService::addIntersection(const IntersectionView& item, string& error) {
+    if (item.id <= 0 || item.name.empty() || item.name.find_first_of("|\r\n") != string::npos ||
+        !isfinite(item.x) || !isfinite(item.y)) {
+        error = "Thong tin giao lo khong hop le.";
+        return false;
+    }
+    if (!city.add_i(intersection(item.id, item.name, item.x, item.y))) {
+        error = "ID giao lo bi trung hoac ban do da day.";
+        return false;
+    }
+    createMapView();
+    return repository.save(city, error);
+}
+
+bool RouteService::updateIntersection(
+    int id, const IntersectionView& item, string& error) {
+    if (item.name.empty() || item.name.find_first_of("|\r\n") != string::npos ||
+        !isfinite(item.x) || !isfinite(item.y)) {
+        error = "Thong tin giao lo khong hop le.";
+        return false;
+    }
+    if (!city.update_i(id, item.name, item.x, item.y)) {
+        error = "Khong tim thay giao lo can sua.";
+        return false;
+    }
+    createMapView();
+    return repository.save(city, error);
+}
+
+bool RouteService::removeIntersection(int id, string& error) {
+    if (city.find_i(id) == -1) {
+        error = "Khong tim thay giao lo can xoa.";
+        return false;
+    }
+    if (city.get_num_i() <= 1) {
+        error = "Ban do phai con it nhat mot giao lo.";
+        return false;
+    }
+    city.remove_i(id);
+    createMapView();
+    return repository.save(city, error);
+}
+
+bool RouteService::addRoad(const RoadView& item, string& error) {
+    if (item.id <= 0 || item.startId == item.endId ||
+        !isfinite(item.time) || !isfinite(item.distance) ||
+        item.time < 0 || item.distance < 0) {
+        error = "Thong tin duong khong hop le.";
+        return false;
+    }
+    if (!city.add_r(road(item.id, item.startId, item.endId, item.time, item.distance))) {
+        error = "ID duong bi trung, giao lo khong ton tai hoac ban do da day.";
+        return false;
+    }
+    createMapView();
+    return repository.save(city, error);
+}
+
+bool RouteService::updateRoad(int id, const RoadView& item, string& error) {
+    if (item.startId == item.endId || !isfinite(item.time) ||
+        !isfinite(item.distance) || item.time < 0 || item.distance < 0) {
+        error = "Thong tin duong khong hop le.";
+        return false;
+    }
+    if (!city.update_r(id, item.startId, item.endId, item.time, item.distance)) {
+        error = "Khong the sua duong: hay kiem tra ID va hai giao lo dau-cuoi.";
+        return false;
+    }
+    createMapView();
+    return repository.save(city, error);
+}
+
+bool RouteService::removeRoad(int id, string& error) {
+    if (city.find_r(id) == -1) {
+        error = "Khong tim thay duong can xoa.";
+        return false;
+    }
+    city.remove_r(id);
+    createMapView();
+    return repository.save(city, error);
 }
 
 RouteResult RouteService::findTaxiRoute(

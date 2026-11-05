@@ -10,6 +10,7 @@ class IMapRepository {
 public:
     virtual ~IMapRepository() = default;
     virtual bool load(map& target, string& error) const = 0;
+    virtual bool save(const map& source, string& error) const = 0;
 };
 
 #endif

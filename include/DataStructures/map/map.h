@@ -41,8 +41,10 @@ public:
     map& operator=(const map&) = delete;
 
     bool add_i(intersection i);
+    bool update_i(int id_i, const string& name, double x, double y);
     void remove_i(int id_i);
     bool add_r(road r);
+    bool update_r(int id_r, int start_id, int end_id, double time, double distance);
     void remove_r(int id_r);
 
     int get_num_i() const;
@@ -106,6 +108,16 @@ bool map::add_i(intersection i) {
     return true;
 }
 
+bool map::update_i(int id_i, const string& name, double x, double y) {
+    int index = find_i(id_i);
+    if (index == -1 || !isfinite(x) || !isfinite(y)) {
+        return false;
+    }
+
+    intersections[index] = intersection(id_i, name, x, y);
+    return true;
+}
+
 void map::remove_i(int id_i) {
     int index = find_i(id_i);
     if (index == -1) {
@@ -139,7 +151,7 @@ bool map::add_r(road r) {
 
     int start = find_i(r.getstart_id());
     int end = find_i(r.getend_id());
-    if (start == -1 || end == -1) {
+    if (start == -1 || end == -1 || start == end) {
         return false;
     }
 
@@ -149,6 +161,19 @@ bool map::add_r(road r) {
     graph[end].push(AdjNode(r.getstart_id(), edge));
     num_r++;
     return true;
+}
+
+bool map::update_r(int id_r, int start_id, int end_id, double time, double distance) {
+    int index = find_r(id_r);
+    int start = find_i(start_id);
+    int end = find_i(end_id);
+    if (index == -1 || start == -1 || end == -1 || start == end ||
+        !isfinite(time) || !isfinite(distance) || time < 0 || distance < 0) {
+        return false;
+    }
+
+    remove_r(id_r);
+    return add_r(road(id_r, start_id, end_id, time, distance));
 }
 
 void map::remove_r(int id_r) {

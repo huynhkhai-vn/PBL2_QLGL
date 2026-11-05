@@ -11,6 +11,8 @@ PROJECT CO 2 CACH CHAY:
      .\build_gui.bat
    - Giao dien co ban cho phep chon diem di/den, tim duong ngan nhat,
      tim duong nhanh nhat va mo phong taxi di theo tuyen.
+   - Nut "Quan ly du lieu" cho phep them, sua va xoa giao lo/duong; thay doi
+     duoc luu vao hai file trong Data/.
 
 2. PHIEN BAN CONSOLE
    - Chay:
