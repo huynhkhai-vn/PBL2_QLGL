@@ -11,10 +11,8 @@
 #include <cstddef>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 using namespace std;
 
@@ -311,13 +309,23 @@ bool map::load_i(const string& filename) {
         if (line.empty()) {
             continue;
         }
-        vector<string> fields;
-        stringstream stream(line);
-        string field;
-        while (getline(stream, field, '|')) {
-            fields.push_back(field);
+        string fields[4];
+        size_t fieldCount = 0;
+        size_t fieldStart = 0;
+        while (true) {
+            if (fieldCount == 4) {
+                throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                    ": giao lo can co 4 truong.");
+            }
+            size_t delimiter = line.find('|', fieldStart);
+            fields[fieldCount++] = line.substr(
+                fieldStart, delimiter == string::npos ? string::npos : delimiter - fieldStart);
+            if (delimiter == string::npos) {
+                break;
+            }
+            fieldStart = delimiter + 1;
         }
-        if (fields.size() != 4) {
+        if (fieldCount != 4) {
             throw runtime_error(filename + ":" + to_string(lineNumber) +
                                 ": giao lo can co 4 truong.");
         }
@@ -363,13 +371,23 @@ bool map::load_r(const string& filename) {
         if (line.empty()) {
             continue;
         }
-        vector<string> fields;
-        stringstream stream(line);
-        string field;
-        while (getline(stream, field, '|')) {
-            fields.push_back(field);
+        string fields[5];
+        size_t fieldCount = 0;
+        size_t fieldStart = 0;
+        while (true) {
+            if (fieldCount == 5) {
+                throw runtime_error(filename + ":" + to_string(lineNumber) +
+                                    ": duong can co 5 truong.");
+            }
+            size_t delimiter = line.find('|', fieldStart);
+            fields[fieldCount++] = line.substr(
+                fieldStart, delimiter == string::npos ? string::npos : delimiter - fieldStart);
+            if (delimiter == string::npos) {
+                break;
+            }
+            fieldStart = delimiter + 1;
         }
-        if (fields.size() != 5) {
+        if (fieldCount != 5) {
             throw runtime_error(filename + ":" + to_string(lineNumber) +
                                 ": duong can co 5 truong.");
         }
