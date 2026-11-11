@@ -1,618 +1,923 @@
-#include "raylib.h"
 #include "BLL/route_service.h"
 #include "DAL/text_map_repository.h"
 
+#include <QApplication>
+#include <QAbstractItemView>
+#include <QComboBox>
+#include <QColor>
+#include <QDialog>
+#include <QDoubleValidator>
+#include <QElapsedTimer>
+#include <QFormLayout>
+#include <QFrame>
+#include <QGroupBox>
+#include <QHeaderView>
+#include <QLabel>
+#include <QLineEdit>
+#include <QLineF>
+#include <QMainWindow>
+#include <QMessageBox>
+#include <QPainter>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QTableWidget>
+#include <QTabWidget>
+#include <QTimer>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QWheelEvent>
+#include <QMouseEvent>
+#include <QStringList>
+
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <exception>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
+#include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
-using namespace std;
-
 namespace {
-constexpr int SCREEN_W = 1280;
-constexpr int SCREEN_H = 800;
-const Rectangle MAP_VIEWPORT = { 32, 130, 760, 610 };
-const Vector2 MAP_CENTER = { 370, 410 };
-const Color PBL_BG = { 15, 23, 42, 255 };
-const Color PBL_PANEL = { 25, 36, 58, 255 };
-const Color PBL_ROAD = { 75, 91, 116, 255 };
-const Color PBL_BLUE = { 59, 130, 246, 255 };
-const Color PBL_PICKUP = { 244, 114, 182, 255 };
-const Color PBL_GREEN = { 34, 197, 94, 255 };
-const Color PBL_RED = { 239, 68, 68, 255 };
-const Color PBL_YELLOW = { 250, 204, 21, 255 };
-const Color PBL_MUTED = { 164, 178, 199, 255 };
+const QColor backgroundColor("#0f172a");
+const QColor panelColor("#19243a");
+const QColor roadColor("#4b5b74");
+const QColor blueColor("#3b82f6");
+const QColor pickupColor("#f472b6");
+const QColor greenColor("#22c55e");
+const QColor redColor("#ef4444");
+const QColor yellowColor("#facc15");
+const QColor mutedColor("#a4b2c7");
 
-struct ScreenPoint { float x; float y; };
-
-enum class ManagedEntity { Intersection, Road };
-enum class FormAction { Add, Edit, Delete };
-
-bool button(Rectangle r, const char* label, bool active = true, bool selected = false) {
-    Vector2 mouse = GetMousePosition();
-    bool hover = CheckCollisionPointRec(mouse, r);
-    Color fill = active ? (selected ? Color{ 37, 99, 160, 255 }
-                                    : (hover ? Color{ 71, 85, 105, 255 } : Color{ 51, 65, 85, 255 }))
-                        : Color{ 45, 55, 72, 255 };
-    DrawRectangleRounded(r, 0.18f, 8, fill);
-    DrawRectangleRoundedLines(r, 0.18f, 8, active ? PBL_BLUE : Color{ 65, 75, 90, 255 });
-    int tw = MeasureText(label, 16);
-    DrawText(label, (int)(r.x + (r.width - tw) / 2), (int)(r.y + (r.height - 16) / 2), 16,
-             active ? RAYWHITE : PBL_MUTED);
-    return active && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+QString qString(const std::string& value) {
+    return QString::fromUtf8(value.c_str());
 }
 
-string number(double value) {
-    ostringstream out;
-    out << fixed << setprecision(2) << value;
-    return out.str();
+QString number(double value) {
+    return QString::number(value, 'f', 2);
 }
 
-bool parseInt(const string& text, int& value) {
-    istringstream input(text);
-    char extra;
-    return (input >> value) && !(input >> extra);
+bool parsePositiveInt(const QString& text, int& value) {
+    bool ok = false;
+    value = text.trimmed().toInt(&ok);
+    return ok && value > 0;
 }
 
-bool parseDouble(const string& text, double& value) {
-    istringstream input(text);
-    char extra;
-    return (input >> value) && !(input >> extra) && isfinite(value);
-}
+bool parseFiniteDouble(const QString& text, double& value) {
+    bool ok = false;
+    value = text.trimmed().toDouble(&ok);
+    return ok && std::isfinite(value);
 }
 
-int runGui() {
-    TextMapRepository repository;
-    RouteService routeService(repository);
-    if (!routeService.isReady()) {
-        InitWindow(700, 180, "PBL2 - Loi du lieu du du lieu");
-        BeginDrawing();
-        ClearBackground(PBL_BG);
-        DrawText("Khong doc duoc du lieu ban do!", 24, 30, 22, PBL_RED);
-        DrawText(routeService.getLoadError().c_str(), 24, 75, 14, RAYWHITE);
-        EndDrawing();
-        WaitTime(3.0);
-        CloseWindow();
-        return 1;
+enum class EntityType { Intersection, Road };
+enum class FormAction { Add, Edit };
+
+struct ManagementPage {
+    QTableWidget* table = nullptr;
+    std::vector<QLineEdit*> fields;
+    FormAction action = FormAction::Add;
+};
+
+class MapWidget final : public QWidget {
+public:
+    explicit MapWidget(const MapView& mapView, QWidget* parent = nullptr)
+        : QWidget(parent), mapView(mapView) {
+        setMinimumSize(520, 500);
+        setMouseTracking(true);
+        setFocusPolicy(Qt::StrongFocus);
     }
 
-    const MapView& mapView = routeService.getMapView();
-    int n = static_cast<int>(mapView.intersections.size());
-    if (n < 2) return 1;
-    vector<int> routePath, routeRoadIds;
-    int firstPathCount = 0;
-    int taxiIndex = 0;
-    int pickupIndex = min(7, n - 1);
-    int destinationIndex = min(14, n - 1);
+    void setSelectionIds(int taxiId, int pickupId, int destinationId) {
+        this->taxiId = taxiId;
+        this->pickupId = pickupId;
+        this->destinationId = destinationId;
+        update();
+    }
+
+    void setRoute(const std::vector<int>& intersections,
+                  const std::vector<int>& roads,
+                  size_t firstLegEdgeCount) {
+        routeIntersections = intersections;
+        routeRoads = roads;
+        this->firstLegEdgeCount = firstLegEdgeCount;
+        update();
+    }
+
+    void clearRoute() {
+        routeIntersections.clear();
+        routeRoads.clear();
+        firstLegEdgeCount = 0;
+        taxiVisible = false;
+        update();
+    }
+
+    void setAnimationProgress(double progress) {
+        animationProgress = std::clamp(progress, 0.0, 1.0);
+        taxiVisible = !routeIntersections.empty();
+        update();
+    }
+
+    std::function<void(int)> intersectionClicked;
     int selectionTarget = 0;
-    bool fastest = false;
-    bool hasRoute = false;
     bool taxiRunning = false;
-    bool managementOpen = false;
-    ManagedEntity managedEntity = ManagedEntity::Intersection;
-    FormAction formAction = FormAction::Add;
-    vector<string> formFields;
-    int activeField = 0;
-    int managementListOffset = 0;
-    int selectedEntityIndex = -1;
-    string managementMessage;
-    float mapZoom = 1.0f;
-    Vector2 mapPan{ 0.0f, 0.0f };
-    double taxiStarted = 0.0;
-    double routeDistance = 0.0;
-    double routeTime = 0.0;
-    double firstDistance = 0.0;
-    double firstTime = 0.0;
-    double secondDistance = 0.0;
-    double secondTime = 0.0;
-    string status = "Chon taxi, diem don va dich tren ban do.";
 
-    auto calculateRoute = [&]() {
-        firstPathCount = 0;
-        routePath.clear();
-        routeRoadIds.clear();
-        const RouteResult result = routeService.findTaxiRoute(
-            mapView.intersections[taxiIndex].id,
-            mapView.intersections[pickupIndex].id,
-            mapView.intersections[destinationIndex].id,
-            fastest ? RouteMode::Fastest : RouteMode::Shortest);
-        taxiRunning = false;
-        hasRoute = result.success;
-        if (!hasRoute) {
-            routeDistance = routeTime = 0.0;
-            firstDistance = firstTime = 0.0;
-            secondDistance = secondTime = 0.0;
-            status = result.error;
-            return;
-        }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), backgroundColor);
 
-        routePath = result.intersectionIds;
-        routeRoadIds = result.roadIds;
-        firstPathCount = static_cast<int>(result.firstLegEdgeCount) + 1;
-        firstDistance = result.firstLegDistance;
-        firstTime = result.firstLegTime;
-        secondDistance = result.secondLegDistance;
-        secondTime = result.secondLegTime;
-        routeDistance = result.totalDistance;
-        routeTime = result.totalTime;
-        status = fastest ? "Da tim hai chang nhanh nhat." : "Da tim hai chang ngan nhat.";
-    };
+        const QRectF canvas = rect().adjusted(12, 12, -12, -12);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(panelColor);
+        painter.drawRoundedRect(canvas, 14, 14);
 
-    auto beginForm = [&](FormAction action) {
-        formAction = action;
-        formFields.clear();
-        if (managedEntity == ManagedEntity::Intersection) {
-            formFields = action == FormAction::Delete
-                ? vector<string>{"ID giao lo"}
-                : vector<string>{"ID giao lo", "Ten", "Toa do X", "Toa do Y"};
-        } else {
-            formFields = action == FormAction::Delete
-                ? vector<string>{"ID duong"}
-                : vector<string>{"ID duong", "ID dau", "ID cuoi", "Thoi gian", "Khoang cach"};
-        }
-        activeField = 0;
-        managementMessage.clear();
-    };
+        const QRectF mapRect = canvas.adjusted(20, 20, -20, -20);
+        painter.save();
+        painter.setClipRect(mapRect);
 
-    auto loadSelectedIntoForm = [&]() {
-        if (selectedEntityIndex < 0) return;
-        if (managedEntity == ManagedEntity::Intersection) {
-            if (selectedEntityIndex >= static_cast<int>(mapView.intersections.size())) return;
-            const IntersectionView& item = mapView.intersections[selectedEntityIndex];
-            formFields[0] = to_string(item.id);
-            if (formAction != FormAction::Delete) {
-                formFields[1] = item.name;
-                formFields[2] = number(item.x);
-                formFields[3] = number(item.y);
-            }
-        } else {
-            if (selectedEntityIndex >= static_cast<int>(mapView.roads.size())) return;
-            const RoadView& item = mapView.roads[selectedEntityIndex];
-            formFields[0] = to_string(item.id);
-            if (formAction != FormAction::Delete) {
-                formFields[1] = to_string(item.startId);
-                formFields[2] = to_string(item.endId);
-                formFields[3] = number(item.time);
-                formFields[4] = number(item.distance);
-            }
-        }
-    };
-
-    auto submitForm = [&]() {
-        string error;
-        int id = 0;
-        bool success = false;
-        if (formFields.empty() || !parseInt(formFields[0], id) || id <= 0) {
-            managementMessage = "ID phai la so nguyen duong.";
-            return;
-        }
-
-        if (managedEntity == ManagedEntity::Intersection) {
-            if (formAction == FormAction::Delete) {
-                success = routeService.removeIntersection(id, error);
-            } else {
-                double x = 0.0, y = 0.0;
-                if (!parseDouble(formFields[2], x) || !parseDouble(formFields[3], y)) {
-                    managementMessage = "Toa do X va Y phai la so hop le.";
-                    return;
-                }
-                IntersectionView item{id, formFields[1], x, y};
-                success = formAction == FormAction::Add
-                    ? routeService.addIntersection(item, error)
-                    : routeService.updateIntersection(id, item, error);
-            }
-        } else {
-            if (formAction == FormAction::Delete) {
-                success = routeService.removeRoad(id, error);
-            } else {
-                int startId = 0, endId = 0;
-                double time = 0.0, distance = 0.0;
-                if (!parseInt(formFields[1], startId) || !parseInt(formFields[2], endId) ||
-                    !parseDouble(formFields[3], time) || !parseDouble(formFields[4], distance)) {
-                    managementMessage = "ID dau/cuoi hoac thoi gian/khoang cach khong hop le.";
-                    return;
-                }
-                RoadView item{id, startId, endId, time, distance};
-                success = formAction == FormAction::Add
-                    ? routeService.addRoad(item, error)
-                    : routeService.updateRoad(id, item, error);
-            }
-        }
-
-        if (success) {
-            n = static_cast<int>(mapView.intersections.size());
-            taxiIndex = min(taxiIndex, n - 1);
-            pickupIndex = min(pickupIndex, n - 1);
-            destinationIndex = min(destinationIndex, n - 1);
-            hasRoute = false;
-            routePath.clear();
-            routeRoadIds.clear();
-            firstPathCount = 0;
-            status = "Du lieu ban do vua duoc cap nhat.";
-            beginForm(formAction);
-            managementMessage = "Da cap nhat ban do va luu vao file.";
-        } else {
-            managementMessage = error;
-            n = static_cast<int>(mapView.intersections.size());
-            taxiIndex = min(taxiIndex, n - 1);
-            pickupIndex = min(pickupIndex, n - 1);
-            destinationIndex = min(destinationIndex, n - 1);
-            hasRoute = false;
-            routePath.clear();
-            routeRoadIds.clear();
-            firstPathCount = 0;
-        }
-    };
-
-    auto pointFor = [&](int id) -> ScreenPoint {
-        const double minX = 10.0, maxX = 90.0, minY = 15.0, maxY = 100.0;
-        const IntersectionView* item = nullptr;
-        for (const IntersectionView& candidate : mapView.intersections) {
-            if (candidate.id == id) {
-                item = &candidate;
-                break;
-            }
-        }
-        if (!item) return { 0, 0 };
-        float baseX = 45.0f + (float)((item->x - minX) / (maxX - minX) * 650.0);
-        float baseY = 690.0f - (float)((item->y - minY) / (maxY - minY) * 560.0);
-        return { MAP_CENTER.x + (baseX - MAP_CENTER.x) * mapZoom + mapPan.x,
-                 MAP_CENTER.y + (baseY - MAP_CENTER.y) * mapZoom + mapPan.y };
-    };
-
-    auto zoomAt = [&](float newZoom, Vector2 anchor) {
-        newZoom = clamp(newZoom, 0.75f, 4.0f);
-        float ratio = newZoom / mapZoom;
-        mapPan.x = anchor.x + (MAP_CENTER.x - anchor.x + mapPan.x) * ratio - MAP_CENTER.x;
-        mapPan.y = anchor.y + (MAP_CENTER.y - anchor.y + mapPan.y) * ratio - MAP_CENTER.y;
-        mapZoom = newZoom;
-    };
-
-    InitWindow(SCREEN_W, SCREEN_H, "PBL2 | Ban do va tim duong Dijkstra");
-    SetTargetFPS(60);
-    while (!WindowShouldClose()) {
-        Vector2 mouse = GetMousePosition();
-        if (!managementOpen && CheckCollisionPointRec(mouse, MAP_VIEWPORT)) {
-            float wheel = GetMouseWheelMove();
-            if (wheel != 0.0f) zoomAt(mapZoom * pow(1.2f, wheel), mouse);
-            if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-                Vector2 delta = GetMouseDelta();
-                mapPan.x += delta.x;
-                mapPan.y += delta.y;
-            }
-        }
-
-        BeginDrawing();
-        ClearBackground(PBL_BG);
-        DrawText("PBL2 - MO PHONG BAN DO GIAO THONG", 32, 22, 27, RAYWHITE);
-        DrawText("Raylib + OOP C++ + thuat toan Dijkstra", 34, 55, 16, PBL_MUTED);
-        DrawRectangleRounded({ 22, 88, 780, 686 }, 0.025f, 8, PBL_PANEL);
-        DrawText("BAN DO GIAO LO", 42, 103, 17, PBL_MUTED);
-        if (button({ 690, 97, 32, 30 }, "+")) zoomAt(mapZoom * 1.25f, MAP_CENTER);
-        if (button({ 728, 97, 32, 30 }, "-")) zoomAt(mapZoom / 1.25f, MAP_CENTER);
-        if (button({ 766, 97, 32, 30 }, "100%")) {
-            mapZoom = 1.0f;
-            mapPan = { 0.0f, 0.0f };
-        }
-
-        BeginScissorMode((int)MAP_VIEWPORT.x, (int)MAP_VIEWPORT.y,
-                         (int)MAP_VIEWPORT.width, (int)MAP_VIEWPORT.height);
-        // Draw all roads first; selected route roads are highlighted.
-        for (const RoadView& r : mapView.roads) {
-            ScreenPoint a = pointFor(r.startId);
-            ScreenPoint b = pointFor(r.endId);
+        for (const RoadView& road : mapView.roads) {
+            const QPointF start = pointFor(road.startId, mapRect);
+            const QPointF end = pointFor(road.endId, mapRect);
             bool firstLeg = false;
             bool secondLeg = false;
-            if (hasRoute) {
-                const int firstLegEdges = max(0, firstPathCount - 1);
-                for (int j = 0; j < static_cast<int>(routeRoadIds.size()); ++j) {
-                    if (routeRoadIds[j] == r.id) {
-                        if (j < firstLegEdges) firstLeg = true;
-                        else secondLeg = true;
-                    }
+            for (size_t i = 0; i < routeRoads.size(); ++i) {
+                if (routeRoads[i] == road.id) {
+                    if (i < firstLegEdgeCount) firstLeg = true;
+                    else secondLeg = true;
                 }
             }
-            Color roadColor = firstLeg ? PBL_BLUE : (secondLeg ? PBL_YELLOW : PBL_ROAD);
-            DrawLineEx({ a.x, a.y }, { b.x, b.y }, firstLeg || secondLeg ? 5.0f : 2.0f, roadColor);
+
+            const QColor color = firstLeg ? blueColor : (secondLeg ? yellowColor : roadColor);
+            QPen pen(color, firstLeg || secondLeg ? 4.0 : 1.6);
+            painter.setPen(pen);
+            painter.drawLine(start, end);
             if (firstLeg || secondLeg) {
-                char label[32];
-                snprintf(label, sizeof(label), "%.1f", r.distance);
-                DrawText(label, (int)((a.x + b.x) / 2 + 3), (int)((a.y + b.y) / 2 - 14), 10,
-                         firstLeg ? PBL_BLUE : PBL_YELLOW);
+                painter.setPen(color);
+                painter.drawText((start + end) / 2 + QPointF(4, -5), number(road.distance));
             }
         }
 
-        // Taxi moves along the chosen path, interpolating between intersections.
-        ScreenPoint taxiPoint{ 0, 0 };
-        bool drawTaxi = false;
-        if (taxiRunning && hasRoute && !routePath.empty()) {
-            double elapsed = GetTime() - taxiStarted;
-            double duration = max(1.0, (double)(routePath.size() - 1) * 1.1);
-            double progress = elapsed / duration;
-            double segmentPos = min(progress, 0.9999) * max(1, static_cast<int>(routePath.size()) - 1);
-            int segment = min((int)segmentPos, max(0, static_cast<int>(routePath.size()) - 2));
-            if (progress >= 1.0) {
-                taxiRunning = false;
-                status = "Taxi da dua khach den noi.";
-            } else if (segment < max(0, firstPathCount - 1)) {
-                status = "Taxi dang den diem don khach.";
-            } else {
-                status = "Taxi dang cho khach.";
+        for (const IntersectionView& node : mapView.intersections) {
+            const QPointF point = pointFor(node.id, mapRect);
+            QColor color = blueColor;
+            if (node.id == taxiId) color = greenColor;
+            if (node.id == pickupId) color = pickupColor;
+            if (node.id == destinationId) color = redColor;
+            if (std::find(routeIntersections.begin(), routeIntersections.end(), node.id) !=
+                    routeIntersections.end() &&
+                node.id != taxiId && node.id != pickupId && node.id != destinationId) {
+                color = yellowColor;
             }
-            float t = (float)(segmentPos - segment);
-            ScreenPoint a = pointFor(routePath[segment]);
-            ScreenPoint b = pointFor(routePath[min(segment + 1, static_cast<int>(routePath.size()) - 1)]);
-            taxiPoint = { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
-            drawTaxi = true;
+
+            const bool named = !node.name.empty();
+            const qreal radius = named || node.id == taxiId || node.id == pickupId ||
+                    node.id == destinationId
+                ? 9.0
+                : 4.0;
+            painter.setPen(QPen(Qt::white, 1));
+            painter.setBrush(named || node.id == taxiId || node.id == pickupId ||
+                                     node.id == destinationId
+                                 ? color
+                                 : mutedColor);
+            painter.drawEllipse(point, radius, radius);
+            if (named) {
+                painter.setPen(Qt::white);
+                painter.drawText(point + QPointF(12, -5),
+                                 QString::number(node.id) + " " + qString(node.name));
+            }
         }
 
-        bool intersectionSelected = false;
-        for (int i = 0; i < n; ++i) {
-            const IntersectionView& node = mapView.intersections[i];
-            ScreenPoint p = pointFor(node.id);
-            Color c = PBL_BLUE;
-            if (i == taxiIndex) c = PBL_GREEN;
-            if (i == pickupIndex) c = PBL_PICKUP;
-            if (i == destinationIndex) c = PBL_RED;
-            if (hasRoute) {
-                for (size_t j = 1; j + 1 < routePath.size(); ++j) {
-                    if (routePath[j] == node.id && i != pickupIndex) c = PBL_YELLOW;
-                }
-            }
-            bool namedIntersection = !node.name.empty();
-            bool selectedIntersection = i == taxiIndex || i == pickupIndex || i == destinationIndex;
-            Vector2 mouse = GetMousePosition();
-            float dx = mouse.x - p.x;
-            float dy = mouse.y - p.y;
-            if (!managementOpen && !intersectionSelected && !taxiRunning && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
-                CheckCollisionPointRec(mouse, MAP_VIEWPORT) &&
-                dx * dx + dy * dy <= 18.0f * 18.0f) {
-                if (selectionTarget == 0) taxiIndex = i;
-                else if (selectionTarget == 1) pickupIndex = i;
-                else destinationIndex = i;
-                hasRoute = false;
-                status = "Da chon giao lo. Bam tim duong de cap nhat.";
-                intersectionSelected = true;
-            }
-            float nodeRadius = namedIntersection || selectedIntersection ? 12.0f : 5.0f;
-            DrawCircle((int)p.x, (int)p.y, nodeRadius, namedIntersection || selectedIntersection ? c : PBL_MUTED);
-            DrawCircleLines((int)p.x, (int)p.y, nodeRadius, RAYWHITE);
-            if (namedIntersection) {
-                char idText[12];
-                snprintf(idText, sizeof(idText), "%d", node.id);
-                DrawText(idText, (int)p.x - MeasureText(idText, 12) / 2, (int)p.y - 6, 12, RAYWHITE);
-                string name = node.name;
-                if (name.size() > 20) name = name.substr(0, 18) + "..";
-                DrawText(name.c_str(), (int)p.x + 14, (int)p.y - 8, 11, RAYWHITE);
-            }
-        }
-        if (drawTaxi) {
-            DrawCircle((int)taxiPoint.x, (int)taxiPoint.y, 8, PBL_YELLOW);
-            DrawCircleLines((int)taxiPoint.x, (int)taxiPoint.y, 8, BLACK);
-        }
-        EndScissorMode();
-        DrawText("Con lan: zoom | Chuot phai: keo ban do", 42, 750, 12, PBL_MUTED);
-
-        // Right control panel
-        DrawRectangleRounded({ 820, 88, 440, 686 }, 0.025f, 8, PBL_PANEL);
-        if (button({ 850, 145, 126, 36 }, "Vi tri taxi", !managementOpen, selectionTarget == 0)) selectionTarget = 0;
-        if (button({ 986, 145, 126, 36 }, "Diem don", !managementOpen, selectionTarget == 1)) selectionTarget = 1;
-        if (button({ 1122, 145, 126, 36 }, "Diem den", !managementOpen, selectionTarget == 2)) selectionTarget = 2;
-        if (button({ 850, 276, 198, 42 }, "Duong ngan nhat", !taxiRunning && !managementOpen, !fastest)) { fastest = false; calculateRoute(); }
-        if (button({ 1058, 276, 190, 42 }, "Duong nhanh nhat", !taxiRunning && !managementOpen, fastest)) { fastest = true; calculateRoute(); }
-        if (button({ 850, 328, 398, 42 }, "Chay mo phong taxi", hasRoute && !taxiRunning && !managementOpen)) {
-            taxiRunning = true;
-            taxiStarted = GetTime();
-            status = firstPathCount > 1 ? "Taxi dang den diem don khach." : "Taxi dang cho khach.";
-        }
-        if (button({ 850, 380, 398, 38 }, "Dat lai", !taxiRunning && !managementOpen)) {
-            hasRoute = false;
-            firstPathCount = 0;
-            routePath.clear();
-            routeRoadIds.clear();
-            routeDistance = 0;
-            routeTime = 0;
-            status = "Da xoa ket qua tim duong.";
-        }
-        DrawText("DIEU PHOI CHUYEN TAXI", 846, 105, 20, RAYWHITE);
-        DrawText("Bam nut vai tro, sau do chon giao lo tren ban do.", 850, 190, 12, PBL_MUTED);
-        const IntersectionView& taxiPosition = mapView.intersections[taxiIndex];
-        const IntersectionView& pickup = mapView.intersections[pickupIndex];
-        const IntersectionView& destination = mapView.intersections[destinationIndex];
-        DrawText(TextFormat("Taxi: %d - %s", taxiPosition.id, taxiPosition.name.c_str()), 850, 210, 14, PBL_GREEN);
-        DrawText(TextFormat("Don khach: %d - %s", pickup.id, pickup.name.c_str()), 850, 232, 14, PBL_PICKUP);
-        DrawText(TextFormat("Diem den: %d - %s", destination.id, destination.name.c_str()), 850, 254, 14, PBL_RED);
-
-        DrawText("KET QUA CHUYEN DI", 850, 438, 19, RAYWHITE);
-        DrawText("Trang thai:", 850, 466, 14, PBL_MUTED);
-        DrawText(status.c_str(), 850, 487, 13, hasRoute ? PBL_GREEN : RAYWHITE);
-        if (hasRoute) {
-            DrawText(TextFormat("Taxi -> don: %s km | %s phut", number(firstDistance).c_str(), number(firstTime).c_str()), 850, 520, 14, RAYWHITE);
-            DrawText(TextFormat("Don -> dich: %s km | %s phut", number(secondDistance).c_str(), number(secondTime).c_str()), 850, 546, 14, RAYWHITE);
-            DrawText(TextFormat("Tong: %s km | %s phut", number(routeDistance).c_str(), number(routeTime).c_str()), 850, 574, 15, PBL_GREEN);
-            DrawText("Lo trinh:", 850, 610, 14, PBL_MUTED);
-            string routeText;
-            for (size_t i = 0; i < routePath.size(); ++i) {
-                routeText += to_string(routePath[i]);
-                if (i + 1 < routePath.size()) routeText += " -> ";
-            }
-            if (routeText.size() > 50) routeText = routeText.substr(0, 47) + "...";
-            DrawText(routeText.c_str(), 850, 632, 14, PBL_YELLOW);
-        } else {
-            DrawText("Chua co ket qua. Hay tim duong.", 850, 520, 14, PBL_MUTED);
-        }
-        DrawText("Chu thich:", 850, 688, 13, PBL_MUTED);
-        DrawCircle(860, 715, 6, PBL_GREEN); DrawText("Taxi", 873, 708, 12, RAYWHITE);
-        DrawCircle(930, 715, 6, PBL_PICKUP); DrawText("Diem don", 943, 708, 12, RAYWHITE);
-        DrawCircle(1035, 715, 6, PBL_RED); DrawText("Diem den", 1048, 708, 12, RAYWHITE);
-        DrawCircle(860, 742, 6, PBL_BLUE); DrawText("Chang taxi den don", 873, 735, 12, RAYWHITE);
-        DrawCircle(1050, 742, 6, PBL_YELLOW); DrawText("Chang cho khach", 1063, 735, 12, RAYWHITE);
-        if (button({ 1030, 28, 220, 38 }, "Quan ly du lieu", !taxiRunning)) {
-            managementOpen = true;
-            managedEntity = ManagedEntity::Intersection;
-            selectedEntityIndex = -1;
-            managementListOffset = 0;
-            beginForm(FormAction::Add);
+        if (taxiRunning && taxiVisible && routeIntersections.size() > 1) {
+            const double segmentPosition = std::min(
+                animationProgress * static_cast<double>(routeIntersections.size() - 1),
+                static_cast<double>(routeIntersections.size() - 1) - 0.0001);
+            const size_t segment = static_cast<size_t>(std::max(0.0, std::floor(segmentPosition)));
+            const qreal amount = segmentPosition - static_cast<double>(segment);
+            const QPointF start = pointFor(routeIntersections[segment], mapRect);
+            const QPointF end = pointFor(
+                routeIntersections[std::min(segment + 1, routeIntersections.size() - 1)],
+                mapRect);
+            const QPointF taxiPoint = start + (end - start) * amount;
+            painter.setPen(QPen(Qt::black, 1));
+            painter.setBrush(yellowColor);
+            painter.drawEllipse(taxiPoint, 7, 7);
         }
 
-        if (managementOpen) {
-            DrawRectangle(0, 0, SCREEN_W, SCREEN_H, Color{0, 0, 0, 190});
-            DrawRectangleRounded({ 170, 92, 940, 620 }, 0.04f, 10, PBL_PANEL);
-            DrawText("QUAN LY GIAO LO VA DUONG", 200, 118, 24, RAYWHITE);
-            DrawText("Thay doi duoc luu vao Data/ ngay sau khi thuc hien.",
-                     200, 151, 14, PBL_MUTED);
-
-            if (button({ 200, 185, 190, 38 }, "Giao lo", true,
-                       managedEntity == ManagedEntity::Intersection)) {
-                managedEntity = ManagedEntity::Intersection;
-                selectedEntityIndex = -1;
-                managementListOffset = 0;
-                beginForm(FormAction::Add);
-            }
-            if (button({ 400, 185, 190, 38 }, "Duong", true,
-                       managedEntity == ManagedEntity::Road)) {
-                managedEntity = ManagedEntity::Road;
-                selectedEntityIndex = -1;
-                managementListOffset = 0;
-                beginForm(FormAction::Add);
-            }
-
-            DrawText(managedEntity == ManagedEntity::Intersection
-                         ? TextFormat("DANH SACH GIAO LO (%i)", static_cast<int>(mapView.intersections.size()))
-                         : TextFormat("DANH SACH DUONG (%i)", static_cast<int>(mapView.roads.size())),
-                     200, 245, 16, RAYWHITE);
-            DrawText("ID | Thong tin", 205, 273, 12, PBL_MUTED);
-
-            const int entityCount = managedEntity == ManagedEntity::Intersection
-                ? static_cast<int>(mapView.intersections.size())
-                : static_cast<int>(mapView.roads.size());
-            const int visibleRows = 9;
-            managementListOffset = clamp(managementListOffset, 0, max(0, entityCount - visibleRows));
-            const Rectangle listBounds = { 195, 292, 390, 310 };
-            if (CheckCollisionPointRec(mouse, listBounds)) {
-                managementListOffset = clamp(
-                    managementListOffset - static_cast<int>(GetMouseWheelMove()),
-                    0, max(0, entityCount - visibleRows));
-            }
-            BeginScissorMode((int)listBounds.x, (int)listBounds.y,
-                             (int)listBounds.width, (int)listBounds.height);
-            for (int row = 0; row < visibleRows; ++row) {
-                int index = managementListOffset + row;
-                if (index >= entityCount) break;
-                Rectangle rowBounds = { 200, 296.0f + row * 33.0f, 380, 30 };
-                bool selected = index == selectedEntityIndex;
-                DrawRectangleRounded(rowBounds, 0.12f, 5,
-                    selected ? Color{ 37, 99, 160, 255 } : Color{ 34, 45, 64, 255 });
-                if (managedEntity == ManagedEntity::Intersection) {
-                    const IntersectionView& item = mapView.intersections[index];
-                    string label = to_string(item.id) + " | " + item.name +
-                        " (" + number(item.x) + ", " + number(item.y) + ")";
-                    if (label.size() > 48) label = label.substr(0, 45) + "...";
-                    DrawText(label.c_str(), 210, 303 + row * 33, 13, RAYWHITE);
-                } else {
-                    const RoadView& item = mapView.roads[index];
-                    string label = to_string(item.id) + " | " + to_string(item.startId) +
-                        " <-> " + to_string(item.endId) + " | " +
-                        number(item.distance) + " km, " + number(item.time) + " phut";
-                    DrawText(label.c_str(), 210, 303 + row * 33, 13, RAYWHITE);
-                }
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
-                    CheckCollisionPointRec(mouse, rowBounds)) {
-                    selectedEntityIndex = index;
-                    if (formAction != FormAction::Add) loadSelectedIntoForm();
-                }
-            }
-            EndScissorMode();
-            DrawText("Cuon chuot de xem danh sach", 200, 610, 12, PBL_MUTED);
-
-            if (button({ 610, 237, 130, 36 }, "Them", true, formAction == FormAction::Add))
-                beginForm(FormAction::Add);
-            if (button({ 750, 237, 130, 36 }, "Sua", true, formAction == FormAction::Edit)) {
-                beginForm(FormAction::Edit);
-                loadSelectedIntoForm();
-            }
-            if (button({ 890, 237, 130, 36 }, "Xoa", true, formAction == FormAction::Delete)) {
-                beginForm(FormAction::Delete);
-                loadSelectedIntoForm();
-            }
-
-            static const char* intersectionLabels[] = {"ID giao lo", "Ten", "Toa do X", "Toa do Y"};
-            static const char* roadLabels[] = {"ID duong", "ID dau", "ID cuoi", "Thoi gian", "Khoang cach"};
-            for (size_t i = 0; i < formFields.size(); ++i) {
-                float y = 302.0f + static_cast<float>(i) * 52.0f;
-                const char* label = managedEntity == ManagedEntity::Intersection
-                    ? intersectionLabels[i] : roadLabels[i];
-                DrawText(label, 610, static_cast<int>(y), 14, PBL_MUTED);
-                Rectangle field = { 730, y - 5, 340, 34 };
-                DrawRectangleRounded(field, 0.12f, 6,
-                    static_cast<int>(i) == activeField ? Color{ 38, 55, 82, 255 }
-                                                       : Color{ 34, 45, 64, 255 });
-                DrawRectangleRoundedLines(field, 0.12f, 6,
-                    static_cast<int>(i) == activeField ? PBL_BLUE : PBL_MUTED);
-                DrawText(formFields[i].c_str(), 742, static_cast<int>(y + 3), 16, RAYWHITE);
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
-                    CheckCollisionPointRec(mouse, field)) {
-                    activeField = static_cast<int>(i);
-                }
-            }
-
-            if (!formFields.empty()) {
-                int key = GetCharPressed();
-                while (key > 0) {
-                    if (activeField >= 0 && activeField < static_cast<int>(formFields.size()) &&
-                        formFields[activeField].size() < 60 && key >= 32 && key <= 125 &&
-                        key != '|') {
-                        bool numericField = activeField == 0 ||
-                            managedEntity == ManagedEntity::Road ||
-                            (formAction != FormAction::Delete &&
-                             (activeField == 2 || activeField == 3));
-                        bool numericCharacter = (key >= '0' && key <= '9') || key == '.' ||
-                            (key == '-' && formFields[activeField].empty());
-                        if (!numericField || numericCharacter) {
-                            formFields[activeField].push_back(static_cast<char>(key));
-                        }
-                    }
-                    key = GetCharPressed();
-                }
-                if (IsKeyPressed(KEY_BACKSPACE) && activeField >= 0 &&
-                    activeField < static_cast<int>(formFields.size()) &&
-                    !formFields[activeField].empty()) {
-                    formFields[activeField].pop_back();
-                }
-                if (IsKeyPressed(KEY_TAB))
-                    activeField = (activeField + 1) % static_cast<int>(formFields.size());
-                if (IsKeyPressed(KEY_ENTER)) submitForm();
-            }
-
-            if (button({ 610, 592, 180, 42 }, "Luu thay doi"))
-                submitForm();
-            if (button({ 890, 592, 140, 42 }, "Dong")) managementOpen = false;
-            if (!managementMessage.empty())
-                DrawText(managementMessage.c_str(), 610, 646, 13,
-                         managementMessage.find("Da cap nhat") == 0 ? PBL_GREEN : PBL_RED);
-            DrawText("Click vao o de nhap | Tab chuyen o | Enter de luu",
-                     610, 672, 12, PBL_MUTED);
-        }
-        DrawText("ESC: thoat | Du lieu doc tu thu muc Data", 34, 779, 12, PBL_MUTED);
-        EndDrawing();
+        painter.restore();
+        painter.setPen(mutedColor);
+        painter.drawText(QRectF(24, height() - 30, width() - 48, 20),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         "Lan chuot de zoom | Keo chuot phai de di chuyen ban do");
     }
-    CloseWindow();
-    return 0;
+
+    void wheelEvent(QWheelEvent* event) override {
+        const QPointF anchor = event->position();
+        const qreal nextZoom = std::clamp(
+            zoom * std::pow(1.2, event->angleDelta().y() / 120.0), 0.75, 4.0);
+        const qreal ratio = nextZoom / zoom;
+        const QPointF center = rect().center();
+        pan = anchor - center - (anchor - center - pan) * ratio;
+        zoom = nextZoom;
+        update();
+        event->accept();
+    }
+
+    void mousePressEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::RightButton) {
+            dragging = true;
+            lastMousePosition = event->position();
+            return;
+        }
+        if (event->button() != Qt::LeftButton || taxiRunning) return;
+
+        const QRectF mapRect = rect().adjusted(32, 32, -32, -32);
+        qreal nearestDistance = std::numeric_limits<qreal>::max();
+        int nearestId = -1;
+        for (const IntersectionView& node : mapView.intersections) {
+            const QPointF point = pointFor(node.id, mapRect);
+            const qreal distance = QLineF(point, event->position()).length();
+            if (distance <= 18 && distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestId = node.id;
+            }
+        }
+        if (nearestId != -1 && intersectionClicked) intersectionClicked(nearestId);
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override {
+        if (dragging) {
+            pan += event->position() - lastMousePosition;
+            lastMousePosition = event->position();
+            update();
+        }
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::RightButton) dragging = false;
+    }
+
+private:
+    QPointF pointFor(int id, const QRectF& mapRect) const {
+        const auto found = std::find_if(
+            mapView.intersections.begin(), mapView.intersections.end(),
+            [id](const IntersectionView& item) { return item.id == id; });
+        if (found == mapView.intersections.end()) return QPointF();
+
+        double minX = found->x;
+        double maxX = found->x;
+        double minY = found->y;
+        double maxY = found->y;
+        for (const IntersectionView& item : mapView.intersections) {
+            minX = std::min(minX, item.x);
+            maxX = std::max(maxX, item.x);
+            minY = std::min(minY, item.y);
+            maxY = std::max(maxY, item.y);
+        }
+        const double xRange = std::max(1.0, maxX - minX);
+        const double yRange = std::max(1.0, maxY - minY);
+        const QPointF base(
+            mapRect.left() + 24 + (found->x - minX) / xRange * (mapRect.width() - 48),
+            mapRect.bottom() - 24 - (found->y - minY) / yRange * (mapRect.height() - 48));
+        const QPointF center = mapRect.center();
+        return center + (base - center) * zoom + pan;
+    }
+
+    const MapView& mapView;
+    std::vector<int> routeIntersections;
+    std::vector<int> routeRoads;
+    size_t firstLegEdgeCount = 0;
+    int taxiId = -1;
+    int pickupId = -1;
+    int destinationId = -1;
+    qreal zoom = 1.0;
+    QPointF pan;
+    QPointF lastMousePosition;
+    double animationProgress = 0.0;
+    bool taxiVisible = false;
+    bool dragging = false;
+};
+
+class ManagementDialog final : public QDialog {
+public:
+    explicit ManagementDialog(RouteService& routeService, QWidget* parent = nullptr)
+        : QDialog(parent), routeService(routeService) {
+        setWindowTitle("Quan ly giao lo va duong");
+        resize(900, 620);
+        auto* layout = new QVBoxLayout(this);
+        auto* tabs = new QTabWidget(this);
+        layout->addWidget(tabs);
+        QWidget* intersectionTab = createPage(EntityType::Intersection, tabs);
+        QWidget* roadTab = createPage(EntityType::Road, tabs);
+        tabs->addTab(intersectionTab, "Giao lo");
+        tabs->addTab(roadTab, "Duong");
+
+        auto* closeButton = new QPushButton("Dong", this);
+        closeButton->setObjectName("secondaryButton");
+        connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
+        layout->addWidget(closeButton, 0, Qt::AlignRight);
+        refreshPage(EntityType::Intersection);
+        refreshPage(EntityType::Road);
+    }
+
+private:
+    QWidget* createPage(EntityType type, QTabWidget*) {
+        auto* pageWidget = new QWidget;
+        auto* layout = new QHBoxLayout(pageWidget);
+        auto* table = new QTableWidget(pageWidget);
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setSelectionMode(QAbstractItemView::SingleSelection);
+        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->horizontalHeader()->setStretchLastSection(true);
+        table->verticalHeader()->setVisible(false);
+        layout->addWidget(table, 3);
+
+        auto* editorPanel = new QWidget(pageWidget);
+        auto* editorLayout = new QVBoxLayout(editorPanel);
+        auto* form = new QFormLayout;
+        ManagementPage& page = type == EntityType::Intersection
+            ? intersectionPage
+            : roadPage;
+        page.table = table;
+        const QStringList labels = type == EntityType::Intersection
+            ? QStringList{"ID giao lo", "Ten", "Toa do X", "Toa do Y"}
+            : QStringList{"ID duong", "ID dau", "ID cuoi", "Thoi gian", "Khoang cach"};
+        for (const QString& label : labels) {
+            auto* field = new QLineEdit(editorPanel);
+            if (label != "Ten") {
+                field->setValidator(new QDoubleValidator(field));
+            }
+            page.fields.push_back(field);
+            form->addRow(label, field);
+        }
+        editorLayout->addLayout(form);
+
+        auto* addButton = new QPushButton("Them moi", editorPanel);
+        auto* editButton = new QPushButton("Cap nhat", editorPanel);
+        auto* saveButton = new QPushButton("Luu thay doi", editorPanel);
+        auto* deleteButton = new QPushButton("Xoa", editorPanel);
+        deleteButton->setObjectName("dangerButton");
+        editorLayout->addWidget(addButton);
+        editorLayout->addWidget(editButton);
+        editorLayout->addWidget(saveButton);
+        editorLayout->addWidget(deleteButton);
+        editorLayout->addStretch();
+        layout->addWidget(editorPanel, 2);
+
+        connect(table, &QTableWidget::itemSelectionChanged, this, [this, type]() {
+            loadSelected(type);
+        });
+        connect(addButton, &QPushButton::clicked, this, [this, type]() {
+            setAction(type, FormAction::Add);
+            clearFields(type);
+        });
+        connect(editButton, &QPushButton::clicked, this, [this, type]() {
+            ManagementPage& current = pageFor(type);
+            if (current.table->currentRow() < 0) {
+                QMessageBox::information(this, "Chua chon", "Hay chon mot dong trong danh sach.");
+                return;
+            }
+            setAction(type, FormAction::Edit);
+            loadSelected(type);
+        });
+        connect(saveButton, &QPushButton::clicked, this, [this, type]() { save(type); });
+        connect(deleteButton, &QPushButton::clicked, this, [this, type]() {
+            removeSelected(type);
+        });
+        return pageWidget;
+    }
+
+    ManagementPage& pageFor(EntityType type) {
+        return type == EntityType::Intersection ? intersectionPage : roadPage;
+    }
+
+    void setAction(EntityType type, FormAction action) {
+        pageFor(type).action = action;
+    }
+
+    void clearFields(EntityType type) {
+        for (QLineEdit* field : pageFor(type).fields) field->clear();
+        pageFor(type).table->clearSelection();
+    }
+
+    void loadSelected(EntityType type) {
+        ManagementPage& page = pageFor(type);
+        const int row = page.table->currentRow();
+        if (row < 0) return;
+        const int id = page.table->item(row, 0)->text().toInt();
+        if (type == EntityType::Intersection) {
+            const auto& items = routeService.getMapView().intersections;
+            const auto found = std::find_if(items.begin(), items.end(),
+                [id](const IntersectionView& item) { return item.id == id; });
+            if (found == items.end()) return;
+            page.fields[0]->setText(QString::number(found->id));
+            page.fields[1]->setText(qString(found->name));
+            page.fields[2]->setText(number(found->x));
+            page.fields[3]->setText(number(found->y));
+        } else {
+            const auto& items = routeService.getMapView().roads;
+            const auto found = std::find_if(items.begin(), items.end(),
+                [id](const RoadView& item) { return item.id == id; });
+            if (found == items.end()) return;
+            page.fields[0]->setText(QString::number(found->id));
+            page.fields[1]->setText(QString::number(found->startId));
+            page.fields[2]->setText(QString::number(found->endId));
+            page.fields[3]->setText(number(found->time));
+            page.fields[4]->setText(number(found->distance));
+        }
+        page.action = FormAction::Edit;
+    }
+
+    void refreshPage(EntityType type) {
+        ManagementPage& page = pageFor(type);
+        page.table->setRowCount(0);
+        if (type == EntityType::Intersection) {
+            page.table->setColumnCount(4);
+            page.table->setHorizontalHeaderLabels({"ID", "Ten", "X", "Y"});
+            for (const IntersectionView& item : routeService.getMapView().intersections) {
+                const int row = page.table->rowCount();
+                page.table->insertRow(row);
+                const QStringList values = {
+                    QString::number(item.id), qString(item.name), number(item.x), number(item.y)};
+                for (int column = 0; column < values.size(); ++column)
+                    page.table->setItem(row, column, new QTableWidgetItem(values[column]));
+            }
+        } else {
+            page.table->setColumnCount(5);
+            page.table->setHorizontalHeaderLabels({"ID", "ID dau", "ID cuoi", "Thoi gian", "Khoang cach"});
+            for (const RoadView& item : routeService.getMapView().roads) {
+                const int row = page.table->rowCount();
+                page.table->insertRow(row);
+                const QStringList values = {
+                    QString::number(item.id), QString::number(item.startId),
+                    QString::number(item.endId), number(item.time), number(item.distance)};
+                for (int column = 0; column < values.size(); ++column)
+                    page.table->setItem(row, column, new QTableWidgetItem(values[column]));
+            }
+        }
+        page.table->resizeColumnsToContents();
+    }
+
+    void save(EntityType type) {
+        ManagementPage& page = pageFor(type);
+        const auto& fields = page.fields;
+        int id = 0;
+        if (!parsePositiveInt(fields[0]->text(), id)) {
+            QMessageBox::warning(this, "Du lieu khong hop le", "ID phai la so nguyen duong.");
+            return;
+        }
+
+        std::string error;
+        bool success = false;
+        if (type == EntityType::Intersection) {
+            double x = 0.0;
+            double y = 0.0;
+            if (fields[1]->text().trimmed().isEmpty() ||
+                fields[1]->text().contains('|') ||
+                !parseFiniteDouble(fields[2]->text(), x) ||
+                !parseFiniteDouble(fields[3]->text(), y)) {
+                QMessageBox::warning(this, "Du lieu khong hop le",
+                                     "Ten va toa do giao lo khong hop le.");
+                return;
+            }
+            const IntersectionView item{id, fields[1]->text().toStdString(), x, y};
+            success = page.action == FormAction::Add
+                ? routeService.addIntersection(item, error)
+                : routeService.updateIntersection(id, item, error);
+        } else {
+            int startId = 0;
+            int endId = 0;
+            double time = 0.0;
+            double distance = 0.0;
+            if (!parsePositiveInt(fields[1]->text(), startId) ||
+                !parsePositiveInt(fields[2]->text(), endId) ||
+                !parseFiniteDouble(fields[3]->text(), time) ||
+                !parseFiniteDouble(fields[4]->text(), distance)) {
+                QMessageBox::warning(this, "Du lieu khong hop le",
+                                     "Hay kiem tra ID giao lo, thoi gian va khoang cach.");
+                return;
+            }
+            const RoadView item{id, startId, endId, time, distance};
+            success = page.action == FormAction::Add
+                ? routeService.addRoad(item, error)
+                : routeService.updateRoad(id, item, error);
+        }
+
+        if (!success) {
+            QMessageBox::warning(this, "Khong the luu", qString(error));
+            return;
+        }
+        refreshPage(type);
+        if (type == EntityType::Intersection) refreshPage(EntityType::Road);
+        clearFields(type);
+        page.action = FormAction::Add;
+        QMessageBox::information(this, "Thanh cong", "Da cap nhat ban do va luu vao file.");
+    }
+
+    void removeSelected(EntityType type) {
+        ManagementPage& page = pageFor(type);
+        const int row = page.table->currentRow();
+        if (row < 0) {
+            QMessageBox::information(this, "Chua chon", "Hay chon mot dong trong danh sach.");
+            return;
+        }
+        const int id = page.table->item(row, 0)->text().toInt();
+        const QString message = type == EntityType::Intersection
+            ? "Xoa giao lo nay cung se xoa cac duong noi voi no. Tiep tuc?"
+            : "Ban co chac muon xoa duong nay?";
+        if (QMessageBox::question(this, "Xac nhan xoa", message) != QMessageBox::Yes) return;
+
+        std::string error;
+        const bool success = type == EntityType::Intersection
+            ? routeService.removeIntersection(id, error)
+            : routeService.removeRoad(id, error);
+        if (!success) {
+            QMessageBox::warning(this, "Khong the xoa", qString(error));
+            return;
+        }
+        refreshPage(type);
+        if (type == EntityType::Intersection) refreshPage(EntityType::Road);
+        clearFields(type);
+        page.action = FormAction::Add;
+        QMessageBox::information(this, "Thanh cong", "Da cap nhat ban do va luu vao file.");
+    }
+
+    RouteService& routeService;
+    ManagementPage intersectionPage;
+    ManagementPage roadPage;
+};
+
+class MainWindow final : public QMainWindow {
+public:
+    explicit MainWindow(RouteService& routeService)
+        : routeService(routeService), mapView(routeService.getMapView()) {
+        setWindowTitle("PBL2 | Ban do va tim duong Dijkstra");
+        resize(1360, 850);
+        setMinimumSize(1000, 700);
+        buildUi();
+
+        const int count = static_cast<int>(mapView.intersections.size());
+        taxiId = mapView.intersections.front().id;
+        pickupId = mapView.intersections[std::min(7, count - 1)].id;
+        destinationId = mapView.intersections[std::min(14, count - 1)].id;
+        refreshIntersectionCombos();
+        mapWidget->setSelectionIds(taxiId, pickupId, destinationId);
+        updateSelectionLabels();
+
+        mapWidget->intersectionClicked = [this](int id) { selectIntersection(id); };
+        animationTimer.setInterval(16);
+        connect(&animationTimer, &QTimer::timeout, this, [this]() { updateAnimation(); });
+    }
+
+private:
+    void buildUi() {
+        auto* central = new QWidget(this);
+        auto* root = new QVBoxLayout(central);
+        root->setContentsMargins(22, 18, 22, 18);
+        root->setSpacing(14);
+
+        auto* heading = new QVBoxLayout;
+        auto* title = new QLabel("PBL2 - MO PHONG BAN DO GIAO THONG", central);
+        title->setObjectName("pageTitle");
+        auto* subtitle = new QLabel("Qt Widgets + OOP C++ + thuat toan Dijkstra", central);
+        subtitle->setObjectName("subtitle");
+        heading->addWidget(title);
+        heading->addWidget(subtitle);
+        root->addLayout(heading);
+
+        auto* content = new QHBoxLayout;
+        content->setSpacing(16);
+        mapWidget = new MapWidget(mapView, central);
+        content->addWidget(mapWidget, 3);
+        auto* controls = new QScrollArea(central);
+        controls->setWidgetResizable(true);
+        controls->setFrameShape(QFrame::NoFrame);
+        controls->setWidget(createControlPanel(controls));
+        content->addWidget(controls, 2);
+        root->addLayout(content, 1);
+        setCentralWidget(central);
+        setStyleSheet(
+            "QMainWindow, QDialog, QWidget { background: #0f172a; color: #f8fafc; }"
+            "QGroupBox { background: #19243a; border: 1px solid #334155; border-radius: 12px;"
+            " margin-top: 12px; padding: 14px; font-weight: 600; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }"
+            "QLabel#pageTitle { font-size: 23px; font-weight: 700; }"
+            "QLabel#subtitle, QLabel#hint { color: #a4b2c7; }"
+            "QComboBox, QLineEdit, QTableWidget, QTabWidget::pane { background: #111c30;"
+            " border: 1px solid #475569; border-radius: 6px; padding: 7px; }"
+            "QComboBox QAbstractItemView { background: #19243a; selection-background-color: #2563eb; }"
+            "QPushButton { background: #334155; border: 1px solid #475569; border-radius: 7px;"
+            " padding: 9px 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; }"
+            "QPushButton#primaryButton { background: #2563eb; border-color: #3b82f6; }"
+            "QPushButton#primaryButton:hover { background: #1d4ed8; }"
+            "QPushButton#dangerButton { background: #7f1d1d; border-color: #ef4444; }"
+            "QPushButton#secondaryButton { background: #334155; }"
+            "QTableWidget { gridline-color: #334155; }"
+            "QHeaderView::section { background: #19243a; padding: 6px; border: 0; }"
+            "QTabBar::tab { background: #19243a; padding: 9px 18px; }"
+            "QTabBar::tab:selected { background: #2563eb; }");
+    }
+
+    QWidget* createControlPanel(QWidget* parent) {
+        auto* panel = new QWidget(parent);
+        auto* layout = new QVBoxLayout(panel);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(12);
+
+        auto* tripGroup = new QGroupBox("DIEU PHOI CHUYEN TAXI", panel);
+        auto* tripLayout = new QVBoxLayout(tripGroup);
+        auto* hint = new QLabel("Chon vai tro, sau do chon giao lo tren ban do.", tripGroup);
+        hint->setObjectName("hint");
+        hint->setWordWrap(true);
+        tripLayout->addWidget(hint);
+
+        taxiCombo = addSelector(tripLayout, "Vi tri taxi");
+        pickupCombo = addSelector(tripLayout, "Diem don");
+        destinationCombo = addSelector(tripLayout, "Diem den");
+        auto* selectTaxiButton = new QPushButton("Chon taxi tren ban do", tripGroup);
+        auto* selectPickupButton = new QPushButton("Chon diem don tren ban do", tripGroup);
+        auto* selectDestinationButton = new QPushButton("Chon diem den tren ban do", tripGroup);
+        tripLayout->addWidget(selectTaxiButton);
+        tripLayout->addWidget(selectPickupButton);
+        tripLayout->addWidget(selectDestinationButton);
+        layout->addWidget(tripGroup);
+
+        auto* routeGroup = new QGroupBox("TIM DUONG", panel);
+        auto* routeLayout = new QVBoxLayout(routeGroup);
+        auto* routeButtons = new QHBoxLayout;
+        auto* shortestButton = new QPushButton("Duong ngan nhat", routeGroup);
+        auto* fastestButton = new QPushButton("Duong nhanh nhat", routeGroup);
+        shortestButton->setObjectName("primaryButton");
+        fastestButton->setObjectName("primaryButton");
+        routeButtons->addWidget(shortestButton);
+        routeButtons->addWidget(fastestButton);
+        routeLayout->addLayout(routeButtons);
+        auto* simulateButton = new QPushButton("Chay mo phong taxi", routeGroup);
+        simulateButton->setObjectName("primaryButton");
+        auto* resetButton = new QPushButton("Dat lai ket qua", routeGroup);
+        auto* manageButton = new QPushButton("Quan ly du lieu", routeGroup);
+        routeLayout->addWidget(simulateButton);
+        routeLayout->addWidget(resetButton);
+        routeLayout->addWidget(manageButton);
+        layout->addWidget(routeGroup);
+
+        auto* resultGroup = new QGroupBox("KET QUA CHUYEN DI", panel);
+        auto* resultLayout = new QVBoxLayout(resultGroup);
+        selectionLabel = new QLabel(resultGroup);
+        selectionLabel->setWordWrap(true);
+        statusLabel = new QLabel("Chon taxi, diem don va dich tren ban do.", resultGroup);
+        statusLabel->setWordWrap(true);
+        statusLabel->setStyleSheet("color: #22c55e; font-weight: 600;");
+        metricsLabel = new QLabel("Chua co ket qua.", resultGroup);
+        metricsLabel->setWordWrap(true);
+        pathLabel = new QLabel(resultGroup);
+        pathLabel->setWordWrap(true);
+        pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        resultLayout->addWidget(selectionLabel);
+        resultLayout->addWidget(statusLabel);
+        resultLayout->addWidget(metricsLabel);
+        resultLayout->addWidget(pathLabel);
+        layout->addWidget(resultGroup);
+
+        auto* legend = new QLabel(
+            "<span style='color:#22c55e'>● Taxi</span> &nbsp; "
+            "<span style='color:#f472b6'>● Diem don</span><br>"
+            "<span style='color:#ef4444'>● Diem den</span> &nbsp; "
+            "<span style='color:#3b82f6'>● Chang den don</span><br>"
+            "<span style='color:#facc15'>● Chang cho khach</span>",
+            panel);
+        layout->addWidget(legend);
+        layout->addStretch();
+
+        auto setTarget = [this](int target) {
+            mapWidget->selectionTarget = target;
+            statusLabel->setText("Da chon vai tro. Bam vao giao lo tren ban do.");
+        };
+        connect(selectTaxiButton, &QPushButton::clicked, this, [setTarget]() { setTarget(0); });
+        connect(selectPickupButton, &QPushButton::clicked, this, [setTarget]() { setTarget(1); });
+        connect(selectDestinationButton, &QPushButton::clicked, this, [setTarget]() { setTarget(2); });
+        connect(taxiCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [this]() { syncSelections(); });
+        connect(pickupCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [this]() { syncSelections(); });
+        connect(destinationCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [this]() { syncSelections(); });
+        connect(shortestButton, &QPushButton::clicked, this,
+                [this]() { calculateRoute(RouteMode::Shortest); });
+        connect(fastestButton, &QPushButton::clicked, this,
+                [this]() { calculateRoute(RouteMode::Fastest); });
+        connect(simulateButton, &QPushButton::clicked, this, [this]() { startSimulation(); });
+        connect(resetButton, &QPushButton::clicked, this, [this]() { resetRoute(); });
+        connect(manageButton, &QPushButton::clicked, this, [this]() { manageData(); });
+        return panel;
+    }
+
+    QComboBox* addSelector(QVBoxLayout* layout, const QString& label) {
+        auto* caption = new QLabel(label, this);
+        auto* combo = new QComboBox(this);
+        layout->addWidget(caption);
+        layout->addWidget(combo);
+        return combo;
+    }
+
+    void refreshIntersectionCombos() {
+        const std::vector<IntersectionView>& intersections = mapView.intersections;
+        const int oldTaxi = taxiId;
+        const int oldPickup = pickupId;
+        const int oldDestination = destinationId;
+        auto populate = [&intersections](QComboBox* combo, int preferredId) {
+            combo->blockSignals(true);
+            combo->clear();
+            int selectedIndex = 0;
+            for (size_t i = 0; i < intersections.size(); ++i) {
+                const IntersectionView& item = intersections[i];
+                QString label = QString::number(item.id);
+                if (!item.name.empty()) label += " - " + qString(item.name);
+                combo->addItem(label, item.id);
+                if (item.id == preferredId) selectedIndex = static_cast<int>(i);
+            }
+            if (!intersections.empty()) combo->setCurrentIndex(selectedIndex);
+            combo->blockSignals(false);
+        };
+        populate(taxiCombo, oldTaxi);
+        populate(pickupCombo, oldPickup);
+        populate(destinationCombo, oldDestination);
+        taxiId = currentId(taxiCombo);
+        pickupId = currentId(pickupCombo);
+        destinationId = currentId(destinationCombo);
+        mapWidget->setSelectionIds(taxiId, pickupId, destinationId);
+    }
+
+    static int currentId(const QComboBox* combo) {
+        return combo->currentData().toInt();
+    }
+
+    void syncSelections() {
+        animationTimer.stop();
+        mapWidget->taxiRunning = false;
+        taxiId = currentId(taxiCombo);
+        pickupId = currentId(pickupCombo);
+        destinationId = currentId(destinationCombo);
+        mapWidget->setSelectionIds(taxiId, pickupId, destinationId);
+        routeResult = RouteResult{};
+        mapWidget->clearRoute();
+        metricsLabel->setText("Chua co ket qua.");
+        pathLabel->clear();
+        updateSelectionLabels();
+        statusLabel->setText("Da thay doi giao lo. Hay tim duong lai.");
+    }
+
+    void updateSelectionLabels() {
+        auto nameFor = [this](int id) {
+            const auto& items = mapView.intersections;
+            const auto found = std::find_if(items.begin(), items.end(),
+                [id](const IntersectionView& item) { return item.id == id; });
+            return found == items.end()
+                ? QString::number(id)
+                : QString("%1 - %2").arg(found->id).arg(qString(found->name));
+        };
+        selectionLabel->setText(
+            "Taxi: " + nameFor(taxiId) + "\nDiem don: " + nameFor(pickupId) +
+            "\nDiem den: " + nameFor(destinationId));
+    }
+
+    void selectIntersection(int id) {
+        QComboBox* target = mapWidget->selectionTarget == 0 ? taxiCombo
+            : mapWidget->selectionTarget == 1 ? pickupCombo
+                                             : destinationCombo;
+        const int index = target->findData(id);
+        if (index >= 0) target->setCurrentIndex(index);
+    }
+
+    void calculateRoute(RouteMode mode) {
+        routeResult = routeService.findTaxiRoute(taxiId, pickupId, destinationId, mode);
+        mapWidget->taxiRunning = false;
+        animationTimer.stop();
+        if (!routeResult.success) {
+            mapWidget->clearRoute();
+            statusLabel->setText(qString(routeResult.error));
+            metricsLabel->setText("Khong co thong tin lo trinh.");
+            pathLabel->clear();
+            return;
+        }
+
+        mapWidget->setRoute(routeResult.intersectionIds, routeResult.roadIds,
+                            routeResult.firstLegEdgeCount);
+        statusLabel->setText(mode == RouteMode::Fastest
+            ? "Da tim hai chang nhanh nhat."
+            : "Da tim hai chang ngan nhat.");
+        metricsLabel->setText(
+            QString("Taxi -> don: %1 km | %2 phut\n"
+                    "Don -> dich: %3 km | %4 phut\n"
+                    "Tong: %5 km | %6 phut")
+                .arg(number(routeResult.firstLegDistance))
+                .arg(number(routeResult.firstLegTime))
+                .arg(number(routeResult.secondLegDistance))
+                .arg(number(routeResult.secondLegTime))
+                .arg(number(routeResult.totalDistance))
+                .arg(number(routeResult.totalTime)));
+        QStringList path;
+        for (int id : routeResult.intersectionIds) path.push_back(QString::number(id));
+        pathLabel->setText("Lo trinh: " + path.join(" -> "));
+    }
+
+    void startSimulation() {
+        if (!routeResult.success || routeResult.intersectionIds.size() < 2) {
+            statusLabel->setText("Hay tim duong truoc khi mo phong.");
+            return;
+        }
+        mapWidget->taxiRunning = true;
+        animationTimer.start();
+        taxiTimer.start();
+        statusLabel->setText(routeResult.firstLegEdgeCount > 0
+            ? "Taxi dang den diem don khach."
+            : "Taxi dang cho khach.");
+    }
+
+    void updateAnimation() {
+        const double duration = std::max(
+            1.0, static_cast<double>(routeResult.intersectionIds.size() - 1) * 1.1);
+        const double progress = taxiTimer.elapsed() / (duration * 1000.0);
+        mapWidget->setAnimationProgress(progress);
+        if (progress >= 1.0) {
+            animationTimer.stop();
+            mapWidget->taxiRunning = false;
+            mapWidget->setAnimationProgress(1.0);
+            statusLabel->setText("Taxi da dua khach den noi.");
+        } else {
+            const double edgePosition =
+                progress * static_cast<double>(routeResult.intersectionIds.size() - 1);
+            statusLabel->setText(edgePosition < routeResult.firstLegEdgeCount
+                ? "Taxi dang den diem don khach."
+                : "Taxi dang cho khach.");
+        }
+    }
+
+    void resetRoute() {
+        animationTimer.stop();
+        mapWidget->taxiRunning = false;
+        mapWidget->clearRoute();
+        routeResult = RouteResult{};
+        metricsLabel->setText("Chua co ket qua.");
+        pathLabel->clear();
+        statusLabel->setText("Da xoa ket qua tim duong.");
+    }
+
+    void manageData() {
+        animationTimer.stop();
+        mapWidget->taxiRunning = false;
+        ManagementDialog dialog(routeService, this);
+        dialog.exec();
+        routeResult = RouteResult{};
+        mapWidget->clearRoute();
+        refreshIntersectionCombos();
+        updateSelectionLabels();
+        metricsLabel->setText("Chua co ket qua.");
+        pathLabel->clear();
+        statusLabel->setText("Du lieu ban do da duoc cap nhat.");
+    }
+
+    RouteService& routeService;
+    const MapView& mapView;
+    MapWidget* mapWidget = nullptr;
+    QComboBox* taxiCombo = nullptr;
+    QComboBox* pickupCombo = nullptr;
+    QComboBox* destinationCombo = nullptr;
+    QLabel* selectionLabel = nullptr;
+    QLabel* statusLabel = nullptr;
+    QLabel* metricsLabel = nullptr;
+    QLabel* pathLabel = nullptr;
+    QTimer animationTimer;
+    QElapsedTimer taxiTimer;
+    RouteResult routeResult;
+    int taxiId = -1;
+    int pickupId = -1;
+    int destinationId = -1;
+};
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    QApplication application(argc, argv);
     try {
-        return runGui();
-    } catch (const exception& error) {
-        cerr << "Loi ngoai le: " << error.what() << endl;
+        TextMapRepository repository;
+        RouteService routeService(repository);
+        if (!routeService.isReady()) {
+            QMessageBox::critical(nullptr, "Loi du lieu ban do",
+                                  qString(routeService.getLoadError()));
+            return 1;
+        }
+        if (routeService.getMapView().intersections.empty()) {
+            QMessageBox::critical(nullptr, "Loi du lieu ban do",
+                                  "Ban do khong co giao lo nao.");
+            return 1;
+        }
+        MainWindow window(routeService);
+        window.show();
+        return application.exec();
+    } catch (const std::exception& error) {
+        QMessageBox::critical(nullptr, "Loi chuong trinh", QString::fromUtf8(error.what()));
     } catch (...) {
-        cerr << "Loi khong xac dinh." << endl;
+        QMessageBox::critical(nullptr, "Loi chuong trinh", "Loi khong xac dinh.");
     }
     return 1;
 }
