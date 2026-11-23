@@ -93,18 +93,18 @@ public:
         update();
     }
 
-    void setRoute(const std::vector<int>& intersections,
-                  const std::vector<int>& roads,
-                  size_t firstLegEdgeCount) {
-        routeIntersections = intersections;
-        routeRoads = roads;
-        this->firstLegEdgeCount = firstLegEdgeCount;
+    void setRoute(const RouteResult& route) {
+        std::copy_n(route.intersectionIds, route.intersectionCount, routeIntersections);
+        routeIntersectionCount = route.intersectionCount;
+        std::copy_n(route.roadIds, route.roadCount, routeRoads);
+        routeRoadCount = route.roadCount;
+        firstLegEdgeCount = route.firstLegEdgeCount;
         update();
     }
 
     void clearRoute() {
-        routeIntersections.clear();
-        routeRoads.clear();
+        routeIntersectionCount = 0;
+        routeRoadCount = 0;
         firstLegEdgeCount = 0;
         taxiVisible = false;
         update();
@@ -112,7 +112,7 @@ public:
 
     void setAnimationProgress(double progress) {
         animationProgress = std::clamp(progress, 0.0, 1.0);
-        taxiVisible = !routeIntersections.empty();
+        taxiVisible = routeIntersectionCount > 0;
         update();
     }
 
@@ -135,12 +135,13 @@ protected:
         painter.save();
         painter.setClipRect(mapRect);
 
-        for (const RoadView& road : mapView.roads) {
+        for (int roadIndex = 0; roadIndex < mapView.roadCount; ++roadIndex) {
+            const RoadView& road = mapView.roads[roadIndex];
             const QPointF start = pointFor(road.startId, mapRect);
             const QPointF end = pointFor(road.endId, mapRect);
             bool firstLeg = false;
             bool secondLeg = false;
-            for (size_t i = 0; i < routeRoads.size(); ++i) {
+            for (int i = 0; i < routeRoadCount; ++i) {
                 if (routeRoads[i] == road.id) {
                     if (i < firstLegEdgeCount) firstLeg = true;
                     else secondLeg = true;
@@ -157,14 +158,15 @@ protected:
             }
         }
 
-        for (const IntersectionView& node : mapView.intersections) {
+        for (int nodeIndex = 0; nodeIndex < mapView.intersectionCount; ++nodeIndex) {
+            const IntersectionView& node = mapView.intersections[nodeIndex];
             const QPointF point = pointFor(node.id, mapRect);
             QColor color = blueColor;
             if (node.id == taxiId) color = greenColor;
             if (node.id == pickupId) color = pickupColor;
             if (node.id == destinationId) color = redColor;
-            if (std::find(routeIntersections.begin(), routeIntersections.end(), node.id) !=
-                    routeIntersections.end() &&
+            if (std::find(routeIntersections, routeIntersections + routeIntersectionCount,
+                          node.id) != routeIntersections + routeIntersectionCount &&
                 node.id != taxiId && node.id != pickupId && node.id != destinationId) {
                 color = yellowColor;
             }
@@ -187,15 +189,15 @@ protected:
             }
         }
 
-        if (taxiRunning && taxiVisible && routeIntersections.size() > 1) {
+        if (taxiRunning && taxiVisible && routeIntersectionCount > 1) {
             const double segmentPosition = std::min(
-                animationProgress * static_cast<double>(routeIntersections.size() - 1),
-                static_cast<double>(routeIntersections.size() - 1) - 0.0001);
-            const size_t segment = static_cast<size_t>(std::max(0.0, std::floor(segmentPosition)));
+                animationProgress * static_cast<double>(routeIntersectionCount - 1),
+                static_cast<double>(routeIntersectionCount - 1) - 0.0001);
+            const int segment = static_cast<int>(std::max(0.0, std::floor(segmentPosition)));
             const qreal amount = segmentPosition - static_cast<double>(segment);
             const QPointF start = pointFor(routeIntersections[segment], mapRect);
             const QPointF end = pointFor(
-                routeIntersections[std::min(segment + 1, routeIntersections.size() - 1)],
+                routeIntersections[std::min(segment + 1, routeIntersectionCount - 1)],
                 mapRect);
             const QPointF taxiPoint = start + (end - start) * amount;
             painter.setPen(QPen(Qt::black, 1));
@@ -233,7 +235,8 @@ protected:
         const QRectF mapRect = rect().adjusted(32, 32, -32, -32);
         qreal nearestDistance = std::numeric_limits<qreal>::max();
         int nearestId = -1;
-        for (const IntersectionView& node : mapView.intersections) {
+        for (int nodeIndex = 0; nodeIndex < mapView.intersectionCount; ++nodeIndex) {
+            const IntersectionView& node = mapView.intersections[nodeIndex];
             const QPointF point = pointFor(node.id, mapRect);
             const qreal distance = QLineF(point, event->position()).length();
             if (distance <= 18 && distance < nearestDistance) {
@@ -259,15 +262,16 @@ protected:
 private:
     QPointF pointFor(int id, const QRectF& mapRect) const {
         const auto found = std::find_if(
-            mapView.intersections.begin(), mapView.intersections.end(),
+            mapView.intersections, mapView.intersections + mapView.intersectionCount,
             [id](const IntersectionView& item) { return item.id == id; });
-        if (found == mapView.intersections.end()) return QPointF();
+        if (found == mapView.intersections + mapView.intersectionCount) return QPointF();
 
         double minX = found->x;
         double maxX = found->x;
         double minY = found->y;
         double maxY = found->y;
-        for (const IntersectionView& item : mapView.intersections) {
+        for (int i = 0; i < mapView.intersectionCount; ++i) {
+            const IntersectionView& item = mapView.intersections[i];
             minX = std::min(minX, item.x);
             maxX = std::max(maxX, item.x);
             minY = std::min(minY, item.y);
@@ -283,9 +287,11 @@ private:
     }
 
     const MapView& mapView;
-    std::vector<int> routeIntersections;
-    std::vector<int> routeRoads;
-    size_t firstLegEdgeCount = 0;
+    int routeIntersections[ROUTE_SERVICE_MAX_ROUTE_INTERSECTIONS]{};
+    int routeIntersectionCount = 0;
+    int routeRoads[ROUTE_SERVICE_MAX_ROUTE_ROADS]{};
+    int routeRoadCount = 0;
+    int firstLegEdgeCount = 0;
     int taxiId = -1;
     int pickupId = -1;
     int destinationId = -1;
@@ -405,19 +411,23 @@ private:
         if (row < 0) return;
         const int id = page.table->item(row, 0)->text().toInt();
         if (type == EntityType::Intersection) {
-            const auto& items = routeService.getMapView().intersections;
-            const auto found = std::find_if(items.begin(), items.end(),
+            const MapView& view = routeService.getMapView();
+            const auto& items = view.intersections;
+            const auto itemsEnd = items + view.intersectionCount;
+            const auto found = std::find_if(items, itemsEnd,
                 [id](const IntersectionView& item) { return item.id == id; });
-            if (found == items.end()) return;
+            if (found == itemsEnd) return;
             page.fields[0]->setText(QString::number(found->id));
             page.fields[1]->setText(qString(found->name));
             page.fields[2]->setText(number(found->x));
             page.fields[3]->setText(number(found->y));
         } else {
-            const auto& items = routeService.getMapView().roads;
-            const auto found = std::find_if(items.begin(), items.end(),
+            const MapView& view = routeService.getMapView();
+            const auto& items = view.roads;
+            const auto itemsEnd = items + view.roadCount;
+            const auto found = std::find_if(items, itemsEnd,
                 [id](const RoadView& item) { return item.id == id; });
-            if (found == items.end()) return;
+            if (found == itemsEnd) return;
             page.fields[0]->setText(QString::number(found->id));
             page.fields[1]->setText(QString::number(found->startId));
             page.fields[2]->setText(QString::number(found->endId));
@@ -433,7 +443,9 @@ private:
         if (type == EntityType::Intersection) {
             page.table->setColumnCount(4);
             page.table->setHorizontalHeaderLabels({"ID", "Ten", "X", "Y"});
-            for (const IntersectionView& item : routeService.getMapView().intersections) {
+            const MapView& view = routeService.getMapView();
+            for (int i = 0; i < view.intersectionCount; ++i) {
+                const IntersectionView& item = view.intersections[i];
                 const int row = page.table->rowCount();
                 page.table->insertRow(row);
                 const QStringList values = {
@@ -444,7 +456,9 @@ private:
         } else {
             page.table->setColumnCount(5);
             page.table->setHorizontalHeaderLabels({"ID", "ID dau", "ID cuoi", "Thoi gian", "Khoang cach"});
-            for (const RoadView& item : routeService.getMapView().roads) {
+            const MapView& view = routeService.getMapView();
+            for (int i = 0; i < view.roadCount; ++i) {
+                const RoadView& item = view.roads[i];
                 const int row = page.table->rowCount();
                 page.table->insertRow(row);
                 const QStringList values = {
@@ -555,8 +569,8 @@ public:
         setMinimumSize(1000, 700);
         buildUi();
 
-        const int count = static_cast<int>(mapView.intersections.size());
-        taxiId = mapView.intersections.front().id;
+        const int count = static_cast<int>(mapView.intersectionCount);
+        taxiId = mapView.intersections[0].id;
         pickupId = mapView.intersections[std::min(7, count - 1)].id;
         destinationId = mapView.intersections[std::min(14, count - 1)].id;
         refreshIntersectionCombos();
@@ -721,22 +735,21 @@ private:
     }
 
     void refreshIntersectionCombos() {
-        const std::vector<IntersectionView>& intersections = mapView.intersections;
         const int oldTaxi = taxiId;
         const int oldPickup = pickupId;
         const int oldDestination = destinationId;
-        auto populate = [&intersections](QComboBox* combo, int preferredId) {
+        auto populate = [this](QComboBox* combo, int preferredId) {
             combo->blockSignals(true);
             combo->clear();
             int selectedIndex = 0;
-            for (size_t i = 0; i < intersections.size(); ++i) {
-                const IntersectionView& item = intersections[i];
+            for (int i = 0; i < mapView.intersectionCount; ++i) {
+                const IntersectionView& item = mapView.intersections[i];
                 QString label = QString::number(item.id);
                 if (!item.name.empty()) label += " - " + qString(item.name);
                 combo->addItem(label, item.id);
                 if (item.id == preferredId) selectedIndex = static_cast<int>(i);
             }
-            if (!intersections.empty()) combo->setCurrentIndex(selectedIndex);
+            if (mapView.intersectionCount > 0) combo->setCurrentIndex(selectedIndex);
             combo->blockSignals(false);
         };
         populate(taxiCombo, oldTaxi);
@@ -770,9 +783,10 @@ private:
     void updateSelectionLabels() {
         auto nameFor = [this](int id) {
             const auto& items = mapView.intersections;
-            const auto found = std::find_if(items.begin(), items.end(),
+            const auto itemsEnd = items + mapView.intersectionCount;
+            const auto found = std::find_if(items, itemsEnd,
                 [id](const IntersectionView& item) { return item.id == id; });
-            return found == items.end()
+            return found == itemsEnd
                 ? QString::number(id)
                 : QString("%1 - %2").arg(found->id).arg(qString(found->name));
         };
@@ -801,8 +815,7 @@ private:
             return;
         }
 
-        mapWidget->setRoute(routeResult.intersectionIds, routeResult.roadIds,
-                            routeResult.firstLegEdgeCount);
+        mapWidget->setRoute(routeResult);
         statusLabel->setText(mode == RouteMode::Fastest
             ? "Da tim hai chang nhanh nhat."
             : "Da tim hai chang ngan nhat.");
@@ -817,12 +830,13 @@ private:
                 .arg(number(routeResult.totalDistance))
                 .arg(number(routeResult.totalTime)));
         QStringList path;
-        for (int id : routeResult.intersectionIds) path.push_back(QString::number(id));
+        for (int i = 0; i < routeResult.intersectionCount; ++i)
+            path.push_back(QString::number(routeResult.intersectionIds[i]));
         pathLabel->setText("Lo trinh: " + path.join(" -> "));
     }
 
     void startSimulation() {
-        if (!routeResult.success || routeResult.intersectionIds.size() < 2) {
+        if (!routeResult.success || routeResult.intersectionCount < 2) {
             statusLabel->setText("Hay tim duong truoc khi mo phong.");
             return;
         }
@@ -836,7 +850,7 @@ private:
 
     void updateAnimation() {
         const double duration = std::max(
-            1.0, static_cast<double>(routeResult.intersectionIds.size() - 1) * 1.1);
+            1.0, static_cast<double>(routeResult.intersectionCount - 1) * 1.1);
         const double progress = taxiTimer.elapsed() / (duration * 1000.0);
         mapWidget->setAnimationProgress(progress);
         if (progress >= 1.0) {
@@ -846,7 +860,7 @@ private:
             statusLabel->setText("Taxi da dua khach den noi.");
         } else {
             const double edgePosition =
-                progress * static_cast<double>(routeResult.intersectionIds.size() - 1);
+                progress * static_cast<double>(routeResult.intersectionCount - 1);
             statusLabel->setText(edgePosition < routeResult.firstLegEdgeCount
                 ? "Taxi dang den diem don khach."
                 : "Taxi dang cho khach.");
@@ -906,7 +920,7 @@ int main(int argc, char* argv[]) {
                                   qString(routeService.getLoadError()));
             return 1;
         }
-        if (routeService.getMapView().intersections.empty()) {
+        if (routeService.getMapView().intersectionCount == 0) {
             QMessageBox::critical(nullptr, "Loi du lieu ban do",
                                   "Ban do khong co giao lo nao.");
             return 1;

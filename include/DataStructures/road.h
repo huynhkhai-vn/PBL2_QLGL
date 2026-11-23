@@ -19,14 +19,12 @@ class road {
         ~road();
 
         int getid_r() const;
-        // string getname_r() const;
         int getstart_id() const;
         int getend_id() const;
         double gettime() const;
         double getdistance() const;
 
         void show() const;
-
 };
 
 road::road(int id_r, int start_id, int end_id, double time, double distance)

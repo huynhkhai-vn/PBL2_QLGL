@@ -4,11 +4,16 @@
 #include "BLL/map_repository.h"
 #include "dijkstra.h"
 #include <cmath>
-#include <cstddef>
 #include <string>
-#include <vector>
 
 using namespace std;
+
+const int ROUTE_SERVICE_MAX_INTERSECTIONS = 100;
+const int ROUTE_SERVICE_MAX_ROADS = 100;
+const int ROUTE_SERVICE_MAX_ROUTE_INTERSECTIONS =
+    ROUTE_SERVICE_MAX_INTERSECTIONS * 2 - 1;
+const int ROUTE_SERVICE_MAX_ROUTE_ROADS =
+    ROUTE_SERVICE_MAX_INTERSECTIONS * 2 - 2;
 
 enum class RouteMode {
     Shortest,
@@ -31,16 +36,20 @@ struct RoadView {
 };
 
 struct MapView {
-    vector<IntersectionView> intersections;
-    vector<RoadView> roads;
+    IntersectionView intersections[ROUTE_SERVICE_MAX_INTERSECTIONS]{};
+    RoadView roads[ROUTE_SERVICE_MAX_ROADS]{};
+    int intersectionCount = 0;
+    int roadCount = 0;
 };
 
 struct RouteResult {
     bool success = false;
     string error;
-    vector<int> intersectionIds;
-    vector<int> roadIds;
-    size_t firstLegEdgeCount = 0;
+    int intersectionIds[ROUTE_SERVICE_MAX_ROUTE_INTERSECTIONS]{};
+    int roadIds[ROUTE_SERVICE_MAX_ROUTE_ROADS]{};
+    int intersectionCount = 0;
+    int roadCount = 0;
+    int firstLegEdgeCount = 0;
     double firstLegDistance = 0.0;
     double firstLegTime = 0.0;
     double secondLegDistance = 0.0;
@@ -95,21 +104,19 @@ const MapView& RouteService::getMapView() const {
 }
 
 void RouteService::createMapView() {
-    mapView.intersections.clear();
-    mapView.roads.clear();
-    mapView.intersections.reserve(static_cast<size_t>(city.get_num_i()));
+    mapView.intersectionCount = 0;
+    mapView.roadCount = 0;
     for (int i = 0; i < city.get_num_i(); ++i) {
         const intersection& item = city.getIntersectionAt(i);
-        mapView.intersections.push_back(
-            {item.getid_i(), item.getname_i(), item.getx(), item.gety()});
+        mapView.intersections[mapView.intersectionCount++] =
+            {item.getid_i(), item.getname_i(), item.getx(), item.gety()};
     }
 
-    mapView.roads.reserve(static_cast<size_t>(city.get_num_r()));
     for (int i = 0; i < city.get_num_r(); ++i) {
         const road& item = city.getRoadAt(i);
-        mapView.roads.push_back(
+        mapView.roads[mapView.roadCount++] =
             {item.getid_r(), item.getstart_id(), item.getend_id(),
-             item.gettime(), item.getdistance()});
+             item.gettime(), item.getdistance()};
     }
 }
 
@@ -203,27 +210,26 @@ RouteResult RouteService::findTaxiRoute(
         return result;
     }
 
-    const int intersectionCount = city.get_num_i();
     if (city.find_i(taxiId) == -1 || city.find_i(pickupId) == -1 ||
         city.find_i(destinationId) == -1) {
         result.error = "Giao lo duoc chon khong ton tai.";
         return result;
     }
 
-    vector<int> firstPath(static_cast<size_t>(intersectionCount));
-    vector<int> firstRoadIds(static_cast<size_t>(intersectionCount));
-    vector<int> secondPath(static_cast<size_t>(intersectionCount));
-    vector<int> secondRoadIds(static_cast<size_t>(intersectionCount));
+    int firstPath[ROUTE_SERVICE_MAX_INTERSECTIONS]{};
+    int firstRoadIds[ROUTE_SERVICE_MAX_INTERSECTIONS]{};
+    int secondPath[ROUTE_SERVICE_MAX_INTERSECTIONS]{};
+    int secondRoadIds[ROUTE_SERVICE_MAX_INTERSECTIONS]{};
     int firstPathCount = 0;
     int secondPathCount = 0;
     dijkstra algorithm;
 
     if (mode == RouteMode::Fastest) {
-        algorithm.fastestPath(city, taxiId, pickupId, firstPath.data(),
-                              firstPathCount, firstRoadIds.data(), false);
+        algorithm.fastestPath(city, taxiId, pickupId, firstPath,
+                              firstPathCount, firstRoadIds, false);
     } else {
-        algorithm.shortestPath(city, taxiId, pickupId, firstPath.data(),
-                               firstPathCount, firstRoadIds.data(), false);
+        algorithm.shortestPath(city, taxiId, pickupId, firstPath,
+                               firstPathCount, firstRoadIds, false);
     }
     if (firstPathCount == 0) {
         result.error = "Khong co duong tu taxi den diem don.";
@@ -231,37 +237,39 @@ RouteResult RouteService::findTaxiRoute(
     }
 
     if (mode == RouteMode::Fastest) {
-        algorithm.fastestPath(city, pickupId, destinationId, secondPath.data(),
-                              secondPathCount, secondRoadIds.data(), false);
+        algorithm.fastestPath(city, pickupId, destinationId, secondPath,
+                              secondPathCount, secondRoadIds, false);
     } else {
-        algorithm.shortestPath(city, pickupId, destinationId, secondPath.data(),
-                               secondPathCount, secondRoadIds.data(), false);
+        algorithm.shortestPath(city, pickupId, destinationId, secondPath,
+                               secondPathCount, secondRoadIds, false);
     }
     if (secondPathCount == 0) {
         result.error = "Khong co duong tu diem don den dich.";
         return result;
     }
 
-    result.intersectionIds.insert(
-        result.intersectionIds.end(), firstPath.begin(), firstPath.begin() + firstPathCount);
-    result.roadIds.insert(
-        result.roadIds.end(), firstRoadIds.begin(), firstRoadIds.begin() + firstPathCount - 1);
-    result.intersectionIds.insert(
-        result.intersectionIds.end(), secondPath.begin() + 1,
-        secondPath.begin() + secondPathCount);
-    result.roadIds.insert(
-        result.roadIds.end(), secondRoadIds.begin(),
-        secondRoadIds.begin() + secondPathCount - 1);
-    result.firstLegEdgeCount = static_cast<size_t>(firstPathCount - 1);
+    for (int i = 0; i < firstPathCount; ++i) {
+        result.intersectionIds[result.intersectionCount++] = firstPath[i];
+    }
+    for (int i = 0; i < firstPathCount - 1; ++i) {
+        result.roadIds[result.roadCount++] = firstRoadIds[i];
+    }
+    for (int i = 1; i < secondPathCount; ++i) {
+        result.intersectionIds[result.intersectionCount++] = secondPath[i];
+    }
+    for (int i = 0; i < secondPathCount - 1; ++i) {
+        result.roadIds[result.roadCount++] = secondRoadIds[i];
+    }
+    result.firstLegEdgeCount = firstPathCount - 1;
 
-    for (size_t i = 0; i < result.roadIds.size(); ++i) {
+    for (int i = 0; i < result.roadCount; ++i) {
         double distance = city.getRoadDistanceById(
             result.roadIds[i], result.intersectionIds[i], result.intersectionIds[i + 1]);
         double time = city.getRoadTimeById(
             result.roadIds[i], result.intersectionIds[i], result.intersectionIds[i + 1]);
         if (distance < 0.0 || time < 0.0) {
-            result.intersectionIds.clear();
-            result.roadIds.clear();
+            result.intersectionCount = 0;
+            result.roadCount = 0;
             result.error = "Khong doc duoc thong tin duong trong lo trinh.";
             return result;
         }

@@ -18,7 +18,6 @@ private:
     int* road_ids;
     int path_size;
     int path_index;
-
 public:
     taxi(int id, int start_id);
     ~taxi();

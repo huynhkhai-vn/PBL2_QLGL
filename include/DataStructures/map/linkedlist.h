@@ -8,44 +8,44 @@ using namespace std;
 
 template <typename T>
 class linkedlist {
-public:
-    class Node {
-        friend class linkedlist<T>;
+    public:
+        struct Node {
+            friend class linkedlist<T>;
+
+        private:
+            T data;
+            Node* next;
+            Node* prev;
+
+            template <typename Value>
+            Node(Value&& value, Node* next_node, Node* prev_node);
+
+        public:
+            const T& get_data() const;
+            Node* get_next() const;
+            Node* get_prev() const;
+        };
 
     private:
-        T data;
-        Node* next;
-        Node* prev;
-
-        template <typename Value>
-        Node(Value&& value, Node* next_node, Node* prev_node);
+        Node* head;
+        Node* tail;
+        size_t size;
+        void clear();
 
     public:
-        const T& get_data() const;
-        Node* get_next() const;
-        Node* get_prev() const;
-    };
-
-private:
-    Node* head;
-    Node* tail;
-    size_t size;
-    void clear();
-
-public:
-    linkedlist();
-    linkedlist(const linkedlist& other);
-    ~linkedlist();
-    linkedlist& operator=(const linkedlist& other);
-    void swap(linkedlist& other) noexcept;
-    bool isEmpty() const;
-    size_t getSize() const;
-    template <typename Value>
-    void push(Value&& value);
-    template <typename Predicate>
-    void remove_if(Predicate predicate);
-    Node* get_head() const;
-    Node* get_tail() const;
+        linkedlist();
+        linkedlist(const linkedlist& other);
+        ~linkedlist();
+        linkedlist& operator=(const linkedlist& other);
+        void swap(linkedlist& other) noexcept;
+        bool isEmpty() const;
+        size_t getSize() const;
+        template <typename Value>
+        void push(Value&& value);
+        template <typename Predicate>
+        void remove_if(Predicate predicate);
+        Node* get_head() const;
+        Node* get_tail() const;
 };
 
 template <typename T>
