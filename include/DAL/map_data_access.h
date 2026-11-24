@@ -1,7 +1,7 @@
-#ifndef TEXT_MAP_REPOSITORY_H
-#define TEXT_MAP_REPOSITORY_H
+#ifndef MAP_DATA_ACCESS_H
+#define MAP_DATA_ACCESS_H
 
-#include "BLL/map_repository.h"
+#include "DataStructures/map/map.h"
 #include <fstream>
 #include <iomanip>
 #include <string>
@@ -9,26 +9,26 @@
 
 using namespace std;
 
-class TextMapRepository : public IMapRepository {
+class MapDataAccess {
 private:
     string intersectionsFile;
     string roadsFile;
 
 public:
-    TextMapRepository(
+    MapDataAccess(
         string intersectionsFile = "Data/intersections.txt",
         string roadsFile = "Data/roads.txt");
 
-    bool load(map& target, string& error) const override;
-    bool save(const map& source, string& error) const override;
+    bool load(map& target, string& error) const;
+    bool save(const map& source, string& error) const;
 };
 
-TextMapRepository::TextMapRepository(
+MapDataAccess::MapDataAccess(
     string intersectionsFile, string roadsFile)
     : intersectionsFile(move(intersectionsFile)),
       roadsFile(move(roadsFile)) {}
 
-bool TextMapRepository::load(map& target, string& error) const {
+bool MapDataAccess::load(map& target, string& error) const {
     error.clear();
     try {
         if (!target.load_i(intersectionsFile)) {
@@ -50,7 +50,7 @@ bool TextMapRepository::load(map& target, string& error) const {
     }
 }
 
-bool TextMapRepository::save(const map& source, string& error) const {
+bool MapDataAccess::save(const map& source, string& error) const {
     error.clear();
 
     ofstream intersectionsOut(intersectionsFile, ios::trunc);

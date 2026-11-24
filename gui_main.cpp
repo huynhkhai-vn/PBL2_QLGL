@@ -1,5 +1,5 @@
-#include "BLL/route_service.h"
-#include "DAL/text_map_repository.h"
+#include "BLL/route_manager.h"
+#include "DAL/map_data_access.h"
 
 #include <QApplication>
 #include <QAbstractItemView>
@@ -305,8 +305,8 @@ private:
 
 class ManagementDialog final : public QDialog {
 public:
-    explicit ManagementDialog(RouteService& routeService, QWidget* parent = nullptr)
-        : QDialog(parent), routeService(routeService) {
+    explicit ManagementDialog(RouteManager& routeManager, QWidget* parent = nullptr)
+        : QDialog(parent), routeManager(routeManager) {
         setWindowTitle("Quan ly giao lo va duong");
         resize(900, 620);
         auto* layout = new QVBoxLayout(this);
@@ -411,7 +411,7 @@ private:
         if (row < 0) return;
         const int id = page.table->item(row, 0)->text().toInt();
         if (type == EntityType::Intersection) {
-            const MapView& view = routeService.getMapView();
+            const MapView& view = routeManager.getMapView();
             const auto& items = view.intersections;
             const auto itemsEnd = items + view.intersectionCount;
             const auto found = std::find_if(items, itemsEnd,
@@ -422,7 +422,7 @@ private:
             page.fields[2]->setText(number(found->x));
             page.fields[3]->setText(number(found->y));
         } else {
-            const MapView& view = routeService.getMapView();
+            const MapView& view = routeManager.getMapView();
             const auto& items = view.roads;
             const auto itemsEnd = items + view.roadCount;
             const auto found = std::find_if(items, itemsEnd,
@@ -443,7 +443,7 @@ private:
         if (type == EntityType::Intersection) {
             page.table->setColumnCount(4);
             page.table->setHorizontalHeaderLabels({"ID", "Ten", "X", "Y"});
-            const MapView& view = routeService.getMapView();
+            const MapView& view = routeManager.getMapView();
             for (int i = 0; i < view.intersectionCount; ++i) {
                 const IntersectionView& item = view.intersections[i];
                 const int row = page.table->rowCount();
@@ -456,7 +456,7 @@ private:
         } else {
             page.table->setColumnCount(5);
             page.table->setHorizontalHeaderLabels({"ID", "ID dau", "ID cuoi", "Thoi gian", "Khoang cach"});
-            const MapView& view = routeService.getMapView();
+            const MapView& view = routeManager.getMapView();
             for (int i = 0; i < view.roadCount; ++i) {
                 const RoadView& item = view.roads[i];
                 const int row = page.table->rowCount();
@@ -495,8 +495,8 @@ private:
             }
             const IntersectionView item{id, fields[1]->text().toStdString(), x, y};
             success = page.action == FormAction::Add
-                ? routeService.addIntersection(item, error)
-                : routeService.updateIntersection(id, item, error);
+                ? routeManager.addIntersection(item, error)
+                : routeManager.updateIntersection(id, item, error);
         } else {
             int startId = 0;
             int endId = 0;
@@ -512,8 +512,8 @@ private:
             }
             const RoadView item{id, startId, endId, time, distance};
             success = page.action == FormAction::Add
-                ? routeService.addRoad(item, error)
-                : routeService.updateRoad(id, item, error);
+                ? routeManager.addRoad(item, error)
+                : routeManager.updateRoad(id, item, error);
         }
 
         if (!success) {
@@ -542,8 +542,8 @@ private:
 
         std::string error;
         const bool success = type == EntityType::Intersection
-            ? routeService.removeIntersection(id, error)
-            : routeService.removeRoad(id, error);
+            ? routeManager.removeIntersection(id, error)
+            : routeManager.removeRoad(id, error);
         if (!success) {
             QMessageBox::warning(this, "Khong the xoa", qString(error));
             return;
@@ -555,15 +555,15 @@ private:
         QMessageBox::information(this, "Thanh cong", "Da cap nhat ban do va luu vao file.");
     }
 
-    RouteService& routeService;
+    RouteManager& routeManager;
     ManagementPage intersectionPage;
     ManagementPage roadPage;
 };
 
 class MainWindow final : public QMainWindow {
 public:
-    explicit MainWindow(RouteService& routeService)
-        : routeService(routeService), mapView(routeService.getMapView()) {
+    explicit MainWindow(RouteManager& routeManager)
+        : routeManager(routeManager), mapView(routeManager.getMapView()) {
         setWindowTitle("PBL2 | Ban do va tim duong Dijkstra");
         resize(1360, 850);
         setMinimumSize(1000, 700);
@@ -804,7 +804,7 @@ private:
     }
 
     void calculateRoute(RouteMode mode) {
-        routeResult = routeService.findTaxiRoute(taxiId, pickupId, destinationId, mode);
+        routeResult = routeManager.findTaxiRoute(taxiId, pickupId, destinationId, mode);
         mapWidget->taxiRunning = false;
         animationTimer.stop();
         if (!routeResult.success) {
@@ -880,7 +880,7 @@ private:
     void manageData() {
         animationTimer.stop();
         mapWidget->taxiRunning = false;
-        ManagementDialog dialog(routeService, this);
+        ManagementDialog dialog(routeManager, this);
         dialog.exec();
         routeResult = RouteResult{};
         mapWidget->clearRoute();
@@ -891,7 +891,7 @@ private:
         statusLabel->setText("Du lieu ban do da duoc cap nhat.");
     }
 
-    RouteService& routeService;
+    RouteManager& routeManager;
     const MapView& mapView;
     MapWidget* mapWidget = nullptr;
     QComboBox* taxiCombo = nullptr;
@@ -913,19 +913,20 @@ private:
 int main(int argc, char* argv[]) {
     QApplication application(argc, argv);
     try {
-        TextMapRepository repository;
-        RouteService routeService(repository);
-        if (!routeService.isReady()) {
+        MapDataAccess repository;
+        MapDataAccess dataAccess;
+        RouteManager routeManager(dataAccess);
+        if (!routeManager.isReady()) {
             QMessageBox::critical(nullptr, "Loi du lieu ban do",
-                                  qString(routeService.getLoadError()));
+                                  qString(routeManager.getLoadError()));
             return 1;
         }
-        if (routeService.getMapView().intersectionCount == 0) {
+        if (routeManager.getMapView().intersectionCount == 0) {
             QMessageBox::critical(nullptr, "Loi du lieu ban do",
                                   "Ban do khong co giao lo nao.");
             return 1;
         }
-        MainWindow window(routeService);
+        MainWindow window(routeManager);
         window.show();
         return application.exec();
     } catch (const std::exception& error) {

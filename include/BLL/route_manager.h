@@ -1,7 +1,7 @@
 #ifndef ROUTE_SERVICE_H
 #define ROUTE_SERVICE_H
 
-#include "BLL/map_repository.h"
+#include "DAL/map_data_access.h"
 #include "dijkstra.h"
 #include <cmath>
 #include <string>
@@ -58,9 +58,9 @@ struct RouteResult {
     double totalTime = 0.0;
 };
 
-class RouteService {
+class RouteManager {
 private:
-    const IMapRepository& repository;
+    const MapDataAccess& dataAccess;
     map city;
     MapView mapView;
     string loadError;
@@ -69,7 +69,7 @@ private:
     void createMapView();
 
 public:
-    explicit RouteService(const IMapRepository& repository);
+    RouteManager(const MapDataAccess& dataAccess);
 
     bool isReady() const;
     const string& getLoadError() const;
@@ -83,27 +83,27 @@ public:
     bool removeRoad(int id, string& error);
 };
 
-RouteService::RouteService(const IMapRepository& repository)
-    : repository(repository), city(), mapView(), loadError(),
-      ready(repository.load(city, loadError)) {
+RouteManager::RouteManager(const MapDataAccess& dataAccess)
+    : dataAccess(dataAccess), city(), mapView(), loadError(),
+      ready(dataAccess.load(city, loadError)) {
     if (ready) {
         createMapView();
     }
 }
 
-bool RouteService::isReady() const {
+bool RouteManager::isReady() const {
     return ready;
 }
 
-const string& RouteService::getLoadError() const {
+const string& RouteManager::getLoadError() const {
     return loadError;
 }
 
-const MapView& RouteService::getMapView() const {
+const MapView& RouteManager::getMapView() const {
     return mapView;
 }
 
-void RouteService::createMapView() {
+void RouteManager::createMapView() {
     mapView.intersectionCount = 0;
     mapView.roadCount = 0;
     for (int i = 0; i < city.get_num_i(); ++i) {
@@ -120,7 +120,7 @@ void RouteService::createMapView() {
     }
 }
 
-bool RouteService::addIntersection(const IntersectionView& item, string& error) {
+bool RouteManager::addIntersection(const IntersectionView& item, string& error) {
     if (item.id <= 0 || item.name.empty() || item.name.find_first_of("|\r\n") != string::npos ||
         !isfinite(item.x) || !isfinite(item.y)) {
         error = "Thong tin giao lo khong hop le.";
@@ -131,10 +131,10 @@ bool RouteService::addIntersection(const IntersectionView& item, string& error) 
         return false;
     }
     createMapView();
-    return repository.save(city, error);
+    return dataAccess.save(city, error);
 }
 
-bool RouteService::updateIntersection(
+bool RouteManager::updateIntersection(
     int id, const IntersectionView& item, string& error) {
     if (item.name.empty() || item.name.find_first_of("|\r\n") != string::npos ||
         !isfinite(item.x) || !isfinite(item.y)) {
@@ -146,10 +146,10 @@ bool RouteService::updateIntersection(
         return false;
     }
     createMapView();
-    return repository.save(city, error);
+    return dataAccess.save(city, error);
 }
 
-bool RouteService::removeIntersection(int id, string& error) {
+bool RouteManager::removeIntersection(int id, string& error) {
     if (city.find_i(id) == -1) {
         error = "Khong tim thay giao lo can xoa.";
         return false;
@@ -160,10 +160,10 @@ bool RouteService::removeIntersection(int id, string& error) {
     }
     city.remove_i(id);
     createMapView();
-    return repository.save(city, error);
+    return dataAccess.save(city, error);
 }
 
-bool RouteService::addRoad(const RoadView& item, string& error) {
+bool RouteManager::addRoad(const RoadView& item, string& error) {
     if (item.id <= 0 || item.startId == item.endId ||
         !isfinite(item.time) || !isfinite(item.distance) ||
         item.time < 0 || item.distance < 0) {
@@ -175,10 +175,10 @@ bool RouteService::addRoad(const RoadView& item, string& error) {
         return false;
     }
     createMapView();
-    return repository.save(city, error);
+    return dataAccess.save(city, error);
 }
 
-bool RouteService::updateRoad(int id, const RoadView& item, string& error) {
+bool RouteManager::updateRoad(int id, const RoadView& item, string& error) {
     if (item.startId == item.endId || !isfinite(item.time) ||
         !isfinite(item.distance) || item.time < 0 || item.distance < 0) {
         error = "Thong tin duong khong hop le.";
@@ -189,20 +189,20 @@ bool RouteService::updateRoad(int id, const RoadView& item, string& error) {
         return false;
     }
     createMapView();
-    return repository.save(city, error);
+    return dataAccess.save(city, error);
 }
 
-bool RouteService::removeRoad(int id, string& error) {
+bool RouteManager::removeRoad(int id, string& error) {
     if (city.find_r(id) == -1) {
         error = "Khong tim thay duong can xoa.";
         return false;
     }
     city.remove_r(id);
     createMapView();
-    return repository.save(city, error);
+    return dataAccess.save(city, error);
 }
 
-RouteResult RouteService::findTaxiRoute(
+RouteResult RouteManager::findTaxiRoute(
     int taxiId, int pickupId, int destinationId, RouteMode mode) const {
     RouteResult result;
     if (!ready) {
