@@ -23,7 +23,6 @@ class intersection {
         double getx() const;
         double gety() const;
         
-        void show() const;
 };
 
 intersection::intersection(int id_i, string name_i, double x, double y)
@@ -37,9 +36,4 @@ int intersection::getid_i() const { return id_i; }
 string intersection::getname_i() const { return name_i; }
 double intersection::getx() const { return x; }
 double intersection::gety() const { return y; }
-
-void intersection::show() const {
-    cout << id_i << " " << name_i << " " << x << " " << y << endl;
-}
-
 #endif

@@ -1,35 +1,29 @@
 #ifndef LINKED_LIST_H
 #define LINKED_LIST_H
 
-#include <cstddef>
-#include <utility>
-
-using namespace std;
-
 template <typename T>
 class linkedlist {
     public:
         struct Node {
             friend class linkedlist<T>;
 
-        private:
-            T data;
-            Node* next;
-            Node* prev;
+            private:
+                T data;
+                Node* next;
+                Node* prev;
 
-            template <typename Value>
-            Node(Value&& value, Node* next_node, Node* prev_node);
+                Node(const T& value, Node* next_node, Node* prev_node);
 
-        public:
-            const T& get_data() const;
-            Node* get_next() const;
-            Node* get_prev() const;
-        };
+            public:
+                const T& get_data() const;
+                Node* get_next() const;
+                Node* get_prev() const;
+            };
 
     private:
         Node* head;
         Node* tail;
-        size_t size;
+        int size;
         void clear();
 
     public:
@@ -37,37 +31,41 @@ class linkedlist {
         linkedlist(const linkedlist& other);
         ~linkedlist();
         linkedlist& operator=(const linkedlist& other);
-        void swap(linkedlist& other) noexcept;
+        void swap(linkedlist& other);
         bool isEmpty() const;
-        size_t getSize() const;
-        template <typename Value>
-        void push(Value&& value);
+        int getSize() const;
+        void push(const T& value);
         template <typename Predicate>
         void remove_if(Predicate predicate);
         Node* get_head() const;
         Node* get_tail() const;
 };
 
+// Định nghĩa các phương thức của Node //
+// Khởi tạo node
 template <typename T>
-template <typename Value>
-linkedlist<T>::Node::Node(Value&& value, Node* next_node, Node* prev_node)
-    : data(forward<Value>(value)), next(next_node), prev(prev_node) {}
-
+linkedlist<T>::Node::Node(const T& value, Node* next_node, Node* prev_node)
+    : data(value), next(next_node), prev(prev_node) {}
+// Getter
 template <typename T>
 const T& linkedlist<T>::Node::get_data() const {
     return data;
 }
+
 
 template <typename T>
 typename linkedlist<T>::Node* linkedlist<T>::Node::get_next() const {
     return next;
 }
 
+
 template <typename T>
 typename linkedlist<T>::Node* linkedlist<T>::Node::get_prev() const {
     return prev;
 }
 
+// Định nghĩa các phương thức của Linkedlist //
+// Xóa Linkedlist
 template <typename T>
 void linkedlist<T>::clear() {
     while (tail != nullptr) {
@@ -79,9 +77,11 @@ void linkedlist<T>::clear() {
     size = 0;
 }
 
+// Khởi tạo Linkedlist
 template <typename T>
 linkedlist<T>::linkedlist() : head(nullptr), tail(nullptr), size(0) {}
 
+// Copy constructor / Hàm dựng sao chép của Linkedlist
 template <typename T>
 linkedlist<T>::linkedlist(const linkedlist& other) : linkedlist() {
     for (Node* current = other.head; current != nullptr; current = current->next) {
@@ -89,11 +89,29 @@ linkedlist<T>::linkedlist(const linkedlist& other) : linkedlist() {
     }
 }
 
+// Destructor
 template <typename T>
 linkedlist<T>::~linkedlist() {
     clear();
 }
 
+//
+template <typename T>
+void linkedlist<T>::swap(linkedlist& other) {
+    Node* tempHead = head;
+    head = other.head;
+    other.head = tempHead;
+
+    Node* tempTail = tail;
+    tail = other.tail;
+    other.tail = tempTail;
+
+    int tempSize = size;
+    size = other.size;
+    other.size = tempSize;
+}
+
+// Toán tử = của Linkedlist
 template <typename T>
 linkedlist<T>& linkedlist<T>::operator=(const linkedlist& other) {
     if (this == &other) {
@@ -105,35 +123,23 @@ linkedlist<T>& linkedlist<T>::operator=(const linkedlist& other) {
     return *this;
 }
 
-template <typename T>
-void linkedlist<T>::swap(linkedlist& other) noexcept {
-    Node* oldHead = head;
-    head = other.head;
-    other.head = oldHead;
 
-    Node* oldTail = tail;
-    tail = other.tail;
-    other.tail = oldTail;
-
-    size_t oldSize = size;
-    size = other.size;
-    other.size = oldSize;
-}
-
+// Kiểm tra Linkedlist rỗng
 template <typename T>
 bool linkedlist<T>::isEmpty() const {
     return size == 0;
 }
 
+// Getter kích thước Linkedlist
 template <typename T>
-size_t linkedlist<T>::getSize() const {
+int linkedlist<T>::getSize() const {
     return size;
 }
 
+// Thêm phần tử vào cuối Linkedlist
 template <typename T>
-template <typename Value>
-void linkedlist<T>::push(Value&& value) {
-    Node* node = new Node(forward<Value>(value), nullptr, tail);
+void linkedlist<T>::push(const T& value) {
+    Node* node = new Node(value, nullptr, tail);
     if (tail == nullptr) {
         head = node;
     } else {
@@ -170,19 +176,17 @@ void linkedlist<T>::remove_if(Predicate predicate) {
     --size;
 }
 
+//Getter head Linkedlist
 template <typename T>
 typename linkedlist<T>::Node* linkedlist<T>::get_head() const {
     return head;
 }
 
+//Getter tail Linkedlist
 template <typename T>
 typename linkedlist<T>::Node* linkedlist<T>::get_tail() const {
     return tail;
 }
 
-template <typename T>
-void swap(linkedlist<T>& left, linkedlist<T>& right) noexcept {
-    left.swap(right);
-}
 
 #endif

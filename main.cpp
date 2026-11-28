@@ -1,7 +1,7 @@
 #include <iostream>
 #include <exception>
 #include <vector>
-#include "include/DataStructures/map/map.h"
+#include "include/DAL/map_data_access.h"
 #include "dijkstra.h"
 #include "taxi.h"
 
@@ -12,14 +12,10 @@ int runConsole() {
 
     // 1. Khoi tao ban do va doc du lieu
     map m;
-
-    if (!m.load_i("Data/intersections.txt") ||
-        !m.load_r("Data/roads.txt")) {
-        cerr << "Khong the nap du lieu ban do." << endl;
-        return 1;
-    }
-    if (m.get_num_i() == 0) {
-        cerr << "Ban do khong co giao lo nao." << endl;
+    MapDataAccess dataAccess;
+    string error;
+    if (!dataAccess.load(m, error)) {
+        cerr << error << endl;
         return 1;
     }
 

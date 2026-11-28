@@ -23,8 +23,6 @@ class road {
         int getend_id() const;
         double gettime() const;
         double getdistance() const;
-
-        void show() const;
 };
 
 road::road(int id_r, int start_id, int end_id, double time, double distance)
@@ -40,9 +38,5 @@ int road::getend_id() const { return end_id; }
 double road::gettime() const { return time; }
 double road::getdistance() const { return distance; }
 
-void road::show() const {
-    cout << id_r << " " << start_id << " " << end_id << " "
-         << time << " " << distance << endl;
-}
 
 #endif

@@ -8,8 +8,6 @@
 #include "adjnode.h"
 #include "linkedlist.h"
 #include <cmath>
-#include <cstddef>
-#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -21,62 +19,59 @@ class dijkstra;
 class map {
     friend class dijkstra;
 
-private:
-    intersection* intersections;
-    int num_i;
-    int size_i;
-    road* roads;
-    int num_r;
-    int size_r;
-    linkedlist<AdjNode>* graph;
+    private:
+        intersection* intersections;
+        int num_i;
+        int size_i;
+        road* roads;
+        int num_r;
+        int size_r;
+        linkedlist<AdjNode>* graph;
 
-public:
-    map(int size_i = 100, int size_r = 100);
-    ~map();
+    public:
+        map(int size_i = 100, int size_r = 100);
+        ~map();
 
-    map(const map&) = delete;
-    map& operator=(const map&) = delete;
+        bool add_i(intersection i);
+        bool update_i(int id_i, const string& name, double x, double y);
+        void remove_i(int id_i);
 
-    bool add_i(intersection i);
-    bool update_i(int id_i, const string& name, double x, double y);
-    void remove_i(int id_i);
-    bool add_r(road r);
-    bool update_r(int id_r, int start_id, int end_id, double time, double distance);
-    void remove_r(int id_r);
+        bool add_r(road r);
+        bool update_r(int id_r, int start_id, int end_id, double time, double distance);
+        void remove_r(int id_r);
 
-    int get_num_i() const;
-    int get_size_i() const;
-    int get_num_r() const;
-    int get_size_r() const;
+        int get_num_i() const;
+        int get_size_i() const;
+        int get_num_r() const;
+        int get_size_r() const;
 
-    const intersection& getIntersectionAt(int index) const;
-    const road& getRoadAt(int index) const;
-    double getRoadTime(int start_id, int end_id) const;
-    double getRoadDistance(int start_id, int end_id) const;
-    double getRoadTimeById(int id_r, int start_id, int end_id) const;
-    double getRoadDistanceById(int id_r, int start_id, int end_id) const;
+        const intersection& getIntersectionAt(int index) const;
+        const road& getRoadAt(int index) const;
+        double getRoadTime(int start_id, int end_id) const;
+        double getRoadDistance(int start_id, int end_id) const;
+        double getRoadTimeById(int id_r, int start_id, int end_id) const;
+        double getRoadDistanceById(int id_r, int start_id, int end_id) const;
 
-    int isEmpty_i() const;
-    int isFull_i() const;
-    int isEmpty_r() const;
-    int isFull_r() const;
-    int find_i(int id_i) const;
-    int find_r(int id_r) const;
+        int isEmpty_i() const;
+        int isFull_i() const;
+        int isEmpty_r() const;
+        int isFull_r() const;
+        int find_i(int id_i) const;
+        int find_r(int id_r) const;
 
-    bool load_i(const string& filename);
-    bool load_r(const string& filename);
-    void show_i() const;
-    void show_r() const;
-    void show_map() const;
-};
+        void show_i() const;
+        void show_r() const;
+        void show_map() const;
+    };
 
+
+// Constructor map
 map::map(int size_i, int size_r)
     : intersections(nullptr), num_i(0), size_i(size_i),
       roads(nullptr), num_r(0), size_r(size_r), graph(nullptr) {
     if (size_i < 0 || size_r < 0) {
         throw invalid_argument("Map capacities cannot be negative");
     }
-
     intersection* new_intersections = nullptr;
     road* new_roads = nullptr;
     linkedlist<AdjNode>* new_graph = nullptr;
@@ -96,12 +91,14 @@ map::map(int size_i, int size_r)
     graph = new_graph;
 }
 
+// Destructor map
 map::~map() {
     delete[] intersections;
     delete[] roads;
     delete[] graph;
 }
 
+// Thêm giao lộ vào bản đồ
 bool map::add_i(intersection i) {
     if (isFull_i() || find_i(i.getid_i()) != -1) {
         return false;
@@ -109,12 +106,12 @@ bool map::add_i(intersection i) {
     if (!isfinite(i.getx()) || !isfinite(i.gety())) {
         return false;
     }
-
     intersections[num_i] = i;
     num_i++;
     return true;
 }
 
+// Cập nhật thông tin giao lộ
 bool map::update_i(int id_i, const string& name, double x, double y) {
     int index = find_i(id_i);
     if (index == -1 || !isfinite(x) || !isfinite(y)) {
@@ -125,12 +122,12 @@ bool map::update_i(int id_i, const string& name, double x, double y) {
     return true;
 }
 
+// Xóa giao lộ khỏi bản đồ
 void map::remove_i(int id_i) {
     int index = find_i(id_i);
     if (index == -1) {
         return;
     }
-
     for (int i = num_r - 1; i >= 0; i--) {
         if (roads[i].getstart_id() == id_i || roads[i].getend_id() == id_i) {
             remove_r(roads[i].getid_r());
@@ -139,7 +136,6 @@ void map::remove_i(int id_i) {
     for (int i = index; i < num_i - 1; i++) {
         intersections[i] = intersections[i + 1];
     }
-
     num_i--;
     for (int i = index; i < num_i; i++) {
         graph[i] = graph[i + 1];
@@ -147,6 +143,7 @@ void map::remove_i(int id_i) {
     graph[num_i] = linkedlist<AdjNode>();
 }
 
+// Thêm đường vào bản đồ
 bool map::add_r(road r) {
     if (isFull_r() || find_r(r.getid_r()) != -1) {
         return false;
@@ -170,6 +167,7 @@ bool map::add_r(road r) {
     return true;
 }
 
+// Cập nhật thông tin đường
 bool map::update_r(int id_r, int start_id, int end_id, double time, double distance) {
     int index = find_r(id_r);
     int start = find_i(start_id);
@@ -183,12 +181,12 @@ bool map::update_r(int id_r, int start_id, int end_id, double time, double dista
     return add_r(road(id_r, start_id, end_id, time, distance));
 }
 
+// Xóa đường khỏi bản đồ
 void map::remove_r(int id_r) {
     int index = find_r(id_r);
     if (index == -1) {
         return;
     }
-
     int start = roads[index].getstart_id();
     int end = roads[index].getend_id();
     int start_index = find_i(start);
@@ -199,18 +197,19 @@ void map::remove_r(int id_r) {
     graph[end_index].remove_if([id_r](const AdjNode& node) {
         return node.get_r().getid_r() == id_r;
     });
-
     for (int i = index; i < num_r - 1; i++) {
         roads[i] = roads[i + 1];
     }
     num_r--;
 }
 
+// Getter
 int map::get_num_i() const { return num_i; }
 int map::get_size_i() const { return size_i; }
 int map::get_num_r() const { return num_r; }
 int map::get_size_r() const { return size_r; }
 
+// Getter giao lộ
 const intersection& map::getIntersectionAt(int index) const {
     if (index < 0 || index >= num_i) {
         throw out_of_range("Intersection index out of range");
@@ -218,6 +217,7 @@ const intersection& map::getIntersectionAt(int index) const {
     return intersections[index];
 }
 
+// Getter đường
 const road& map::getRoadAt(int index) const {
     if (index < 0 || index >= num_r) {
         throw out_of_range("Road index out of range");
@@ -225,6 +225,7 @@ const road& map::getRoadAt(int index) const {
     return roads[index];
 }
 
+// Getter thời gian
 double map::getRoadTime(int start_id, int end_id) const {
     double result = -1;
     for (int i = 0; i < num_r; i++) {
@@ -239,6 +240,7 @@ double map::getRoadTime(int start_id, int end_id) const {
     return result;
 }
 
+// Getter khoảng cách
 double map::getRoadDistance(int start_id, int end_id) const {
     double result = -1;
     for (int i = 0; i < num_r; i++) {
@@ -253,6 +255,7 @@ double map::getRoadDistance(int start_id, int end_id) const {
     return result;
 }
 
+// Getter thời gian theo ID đường
 double map::getRoadTimeById(int id_r, int start_id, int end_id) const {
     int index = find_r(id_r);
     if (index == -1 ||
@@ -263,6 +266,7 @@ double map::getRoadTimeById(int id_r, int start_id, int end_id) const {
     return roads[index].gettime();
 }
 
+// Getter khoảng cách theo ID đường
 double map::getRoadDistanceById(int id_r, int start_id, int end_id) const {
     int index = find_r(id_r);
     if (index == -1 ||
@@ -294,134 +298,6 @@ int map::find_r(int id_r) const {
         }
     }
     return -1;
-}
-
-bool map::load_i(const string& filename) {
-    ifstream fin(filename);
-    if (!fin) {
-        throw runtime_error("Khong mo duoc file giao lo: " + filename);
-    }
-
-    string line;
-    size_t lineNumber = 0;
-    while (getline(fin, line)) {
-        ++lineNumber;
-        if (line.empty()) {
-            continue;
-        }
-        string fields[4];
-        size_t fieldCount = 0;
-        size_t fieldStart = 0;
-        while (true) {
-            if (fieldCount == 4) {
-                throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                    ": giao lo can co 4 truong.");
-            }
-            size_t delimiter = line.find('|', fieldStart);
-            fields[fieldCount++] = line.substr(
-                fieldStart, delimiter == string::npos ? string::npos : delimiter - fieldStart);
-            if (delimiter == string::npos) {
-                break;
-            }
-            fieldStart = delimiter + 1;
-        }
-        if (fieldCount != 4) {
-            throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                ": giao lo can co 4 truong.");
-        }
-
-        try {
-            size_t idLength = 0, xLength = 0, yLength = 0;
-            int id = stoi(fields[0], &idLength);
-            double x = stod(fields[2], &xLength);
-            double y = stod(fields[3], &yLength);
-            if (idLength != fields[0].size() || xLength != fields[2].size() ||
-                yLength != fields[3].size()) {
-                throw invalid_argument("Du lieu so chua ky tu khong hop le.");
-            }
-            if (!add_i(intersection(id, fields[1], x, y))) {
-                throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                    ": ID giao lo bi trung, toa do khong hop le "
-                                    "hoac vuot suc chua ban do.");
-            }
-        } catch (const invalid_argument& error) {
-            throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                ": " + error.what());
-        } catch (const out_of_range& error) {
-            throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                ": " + error.what());
-        }
-    }
-    if (fin.bad()) {
-        throw runtime_error("Loi khi doc file giao lo: " + filename);
-    }
-    return true;
-}
-
-bool map::load_r(const string& filename) {
-    ifstream fin(filename);
-    if (!fin) {
-        throw runtime_error("Khong mo duoc file duong: " + filename);
-    }
-
-    string line;
-    size_t lineNumber = 0;
-    while (getline(fin, line)) {
-        ++lineNumber;
-        if (line.empty()) {
-            continue;
-        }
-        string fields[5];
-        size_t fieldCount = 0;
-        size_t fieldStart = 0;
-        while (true) {
-            if (fieldCount == 5) {
-                throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                    ": duong can co 5 truong.");
-            }
-            size_t delimiter = line.find('|', fieldStart);
-            fields[fieldCount++] = line.substr(
-                fieldStart, delimiter == string::npos ? string::npos : delimiter - fieldStart);
-            if (delimiter == string::npos) {
-                break;
-            }
-            fieldStart = delimiter + 1;
-        }
-        if (fieldCount != 5) {
-            throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                ": duong can co 5 truong.");
-        }
-
-        try {
-            size_t idLength = 0, startLength = 0, endLength = 0;
-            size_t timeLength = 0, distanceLength = 0;
-            int id = stoi(fields[0], &idLength);
-            int startId = stoi(fields[1], &startLength);
-            int endId = stoi(fields[2], &endLength);
-            double time = stod(fields[3], &timeLength);
-            double distance = stod(fields[4], &distanceLength);
-            if (idLength != fields[0].size() || startLength != fields[1].size() ||
-                endLength != fields[2].size() || timeLength != fields[3].size() ||
-                distanceLength != fields[4].size()) {
-                throw invalid_argument("Du lieu so chua ky tu khong hop le.");
-            }
-            if (!add_r(road(id, startId, endId, time, distance))) {
-                throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                    ": ID duong bi trung, giao lo khong ton tai, "
-                                    "trong so khong hop le hoac vuot suc chua ban do.");
-            }
-        } catch (const invalid_argument& error) {
-            throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                ": " + error.what());
-        } catch (const out_of_range& error) {
-            throw runtime_error(filename + ":" + to_string(lineNumber) +
-                                ": " + error.what());
-        }
-    }
-    if (fin.bad()) {
-        throw runtime_error("Loi khi doc file duong: " + filename);
-    }
-    return true;
 }
 
 void map::show_i() const {
